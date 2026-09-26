@@ -2,6 +2,8 @@
 
 Astro-compatible content collections for Ruby on Rails.
 
+https://github.com/user-attachments/assets/7bde3b4f-7bdb-49f9-9646-cd981846a451
+
 [Documentation](https://www.andromedacms.dev/docs) · [Changelog](CHANGELOG.md)
 
 Copy the `.md` and `.mdx` files from an [Astro](https://astro.build) project
