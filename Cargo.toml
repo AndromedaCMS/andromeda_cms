@@ -3,3 +3,10 @@
 [workspace]
 members = ["ext/andromeda_cms"]
 resolver = "2"
+
+# Profiles only take effect at the workspace root; in the member crate Cargo
+# ignored them, which left Windows builds unstripped at four times the size.
+[profile.release]
+opt-level = 3
+strip = true
+lto = true
