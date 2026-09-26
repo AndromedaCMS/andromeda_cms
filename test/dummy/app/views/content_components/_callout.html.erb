@@ -1,0 +1,4 @@
+<aside class="callout callout--<%= local_assigns.fetch(:type, "note") %>">
+  <% if local_assigns[:title] %><p class="callout__title"><%= title %></p><% end %>
+  <%= content %>
+</aside>

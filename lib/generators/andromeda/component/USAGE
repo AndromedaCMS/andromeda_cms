@@ -1,0 +1,15 @@
+Description:
+    Generates a partial for an MDX component under
+    app/views/content_components/, matching the naming convention
+    Andromeda::Components resolves tags with: `Callout` -> _callout.html.erb.
+
+    NAME must be a single CamelCase or underscored word (no namespaces, no
+    dots) -- MDX component tags are a single JSX identifier.
+
+    Each PROP becomes an optional local (`local_assigns[:prop]`); the tag's
+    children are always available as `content`.
+
+Example:
+    rails generate andromeda:component Callout type title
+
+    Creates app/views/content_components/_callout.html.erb.

@@ -1,0 +1,6 @@
+<h1>Blog</h1>
+<ul>
+  <% @entries.each do |entry| %>
+    <li><%= link_to entry.title, blog_path(entry.id) %></li>
+  <% end %>
+</ul>

@@ -1,0 +1,11 @@
+Description:
+    Sets up a host application for Andromeda: creates app/content/ and
+    app/views/content_components/, writes a commented config/initializers/
+    andromeda.rb, and appends the paths Andromeda writes at build time
+    (/.andromeda/ and /app/assets/builds/andromeda/) to .gitignore and
+    .dockerignore.
+
+    Safe to run more than once: it never duplicates a line it already added.
+
+Example:
+    rails generate andromeda:install

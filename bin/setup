@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+bundle install
+# Nothing in the suite runs without the native parser, so building it is part
+# of setting up rather than something to discover on the first failure.
+bundle exec rake compile

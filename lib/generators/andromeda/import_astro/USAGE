@@ -1,0 +1,21 @@
+Description:
+    Imports an existing Astro project's content into this app: every
+    collection referenced by `src/content.config.ts` (or, failing that,
+    every directory under `src/content/`) into `app/content/<collection>/`,
+    `src/assets` into `app/assets/`, an `Andromeda::Entry` subclass per
+    collection under `app/models/content/`, and a starter partial for every
+    MDX component that does not have one yet.
+
+    Frontmatter keys are rewritten to snake_case and MDX import statements
+    are rewritten to the `content_components/...` partial-path form;
+    everything else is copied byte-for-byte.
+
+    Prints a migration report of what was copied/rewritten/generated, and
+    everything that still needs a human (unmapped schema fields, components
+    to implement, expressions the renderer cannot statically evaluate).
+
+Example:
+    rails generate andromeda:import_astro ../my-astro-blog
+
+    rails generate andromeda:import_astro ../my-astro-blog --dry-run
+        Prints the same report without writing any files.

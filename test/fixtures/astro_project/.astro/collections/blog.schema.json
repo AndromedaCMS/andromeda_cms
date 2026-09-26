@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "subtitle": { "type": "string" },
+    "description": { "type": "string" },
+    "pubDate": { "type": "string", "format": "date-time" },
+    "updatedDate": { "type": "string", "format": "date-time" },
+    "draft": { "type": "boolean" },
+    "views": { "type": "integer" },
+    "category": { "type": "string", "enum": ["tech", "life"] },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "heroImage": { "type": "string" },
+    "author": { "type": "string" },
+    "$schema": { "type": "string" }
+  },
+  "required": ["title", "pubDate", "author"]
+}

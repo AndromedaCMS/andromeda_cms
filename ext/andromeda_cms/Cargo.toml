@@ -1,0 +1,23 @@
+[package]
+name = "andromeda_cms"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnus = "0.8"
+# Sätteri is the Markdown/MDX engine Astro 7 uses by default, so parsing here
+# matches what the content author saw in Astro. It is pre-1.0: versions are
+# pinned and a corpus regression test guards upgrades.
+satteri-ast = "0.5"
+satteri-arena = "0.3"
+satteri-pulldown-cmark = "0.6"
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = true

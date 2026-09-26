@@ -1,0 +1,114 @@
+name: Release
+
+# Pushing a `v*` tag builds every gem and publishes them to RubyGems.
+# A manual run builds the same gems as artifacts without publishing, to try
+# the cross-compilation before tagging.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # Fails in seconds rather than after half an hour of compiling: a tag that
+  # disagrees with VERSION would publish the wrong number, and RubyGems never
+  # lets a version be pushed twice.
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - name: Tag matches Andromeda::VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(ruby -e 'require "./lib/andromeda/version"; print Andromeda::VERSION')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Andromeda::VERSION $version"
+            exit 1
+          fi
+
+  # Users must not need a Rust toolchain, so every supported platform gets a
+  # precompiled gem; the source gem stays as the fallback for the rest.
+  cross-gem:
+    name: Compile for ${{ matrix.platform }}
+    needs: check-version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - arm64-darwin
+          - x86_64-darwin
+          - x86_64-linux
+          - x86_64-linux-musl
+          - aarch64-linux
+          - aarch64-linux-musl
+          - x64-mingw-ucrt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          cargo-cache: true
+      - uses: oxidize-rb/actions/cross-gem@v1
+        id: cross-gem
+        with:
+          platform: ${{ matrix.platform }}
+          # One binary per Ruby minor inside each platform gem; a minor left
+          # out here silently falls back to compiling from source.
+          ruby-versions: "3.2,3.3,3.4,4.0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gem-${{ matrix.platform }}
+          path: ${{ steps.cross-gem.outputs.gem-path }}
+
+  source-gem:
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          cargo-cache: true
+      - run: bundle exec rake build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gem-ruby
+          path: pkg/*.gem
+
+  # RubyGems trusted publishing: the job proves it is this workflow in this
+  # repository through GitHub's OIDC token, so no API key is stored anywhere.
+  # Runs only once every platform built, so a release is never published
+  # with some platforms missing.
+  publish:
+    needs: [cross-gem, source-gem]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: rubygems
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: gem-*
+          path: pkg
+          merge-multiple: true
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+      - uses: rubygems/configure-rubygems-credentials@v1.0.0
+      # Platform gems first: `gem install` picks the newest version, so the
+      # source gem going out alone for a moment would send users to a Rust
+      # build they do not need.
+      - name: Push every gem
+        run: |
+          for gem in $(ls pkg/*.gem | grep -v -- '-[0-9.]*\.gem$'); do gem push "$gem"; done
+          for gem in $(ls pkg/*.gem | grep -- '-[0-9.]*\.gem$'); do gem push "$gem"; done

@@ -1,0 +1,25 @@
+Description:
+    Generates everything a new content collection needs: an entry class
+    under app/models/content (or your configured entry_namespace), a
+    controller, index/show views, a route, and a starter content file with
+    frontmatter matching the declared attributes.
+
+    NAME is the collection as it appears under app/content/, and is used
+    as-is for the controller, views, route and content directory. The entry
+    class file/constant is the singular of NAME.
+
+    Field types: string (default) / date / datetime / boolean / integer /
+    array / image / reference. `field:reference:other_collection` names the
+    referenced collection explicitly; without it, the field name is
+    pluralized as a guess.
+
+Example:
+    rails generate andromeda:collection posts title:string pub_date:date draft:boolean
+
+    This creates:
+        app/models/content/post.rb
+        app/controllers/posts_controller.rb
+        app/views/posts/index.html.erb
+        app/views/posts/show.html.erb
+        app/content/posts/hello-world.md
+        config/routes.rb -- adds `resources :posts, only: %i[index show], param: :slug`

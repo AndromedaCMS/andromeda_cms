@@ -1,0 +1,5 @@
+# rb-sys resolves crate metadata from the gem root, so the extension lives in a
+# workspace rather than standing alone under ext/.
+[workspace]
+members = ["ext/andromeda_cms"]
+resolver = "2"
