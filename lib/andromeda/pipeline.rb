@@ -171,7 +171,7 @@ module Andromeda
     def build_collection(entry_class)
       entries =
         begin
-          entry_class.all.to_a
+          entry_class.source_entries
         rescue Andromeda::LoaderError => e
           return BuildResult.new(
             collection: entry_class.collection_name, converted: 0,

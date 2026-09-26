@@ -290,6 +290,32 @@ class PipelineTest < Minitest::Test
     assert_equal %w[hello-world with-component], @store.read_index(:pipeline_test_blog).map { |s| s[:id] }.sort
   end
 
+  # A deploy builds in production mode from a clean checkout, where the built
+  # index Entry.all reads in production does not exist yet.
+  def test_build_collection_in_production_mode_reads_source_files_before_anything_is_built
+    in_production_mode(build_path: Dir.mktmpdir("andromeda-empty-build")) do
+      BlogPost.reload!
+      result = pipeline(mode: :production).build_collection(BlogPost)
+
+      assert result.success?
+      assert_equal 2, result.converted
+    end
+  end
+
+  # A second production build must convert the source again: the built index
+  # carries no body, so converting its entries would blank every page.
+  def test_rebuilding_in_production_mode_keeps_every_page_body
+    BlogPost.reload!
+    pipeline.build_collection(BlogPost)
+
+    in_production_mode(build_path: @dir) do
+      BlogPost.reload!
+      pipeline(mode: :production).build_collection(BlogPost)
+    end
+
+    assert_includes @store.read_entry(:pipeline_test_blog, "hello-world")[:html], "<h1"
+  end
+
   def test_build_all_with_only_clean_collections_writes_everything
     BlogPost.reload!
     results = Andromeda::Pipeline.build_all([BlogPost], store: @store)
@@ -363,6 +389,16 @@ class PipelineTest < Minitest::Test
 
   def frontmatter_body(text)
     "---\ntitle: #{text}\npub_date: 2022-01-01\n---\n#{text}\n"
+  end
+
+  def in_production_mode(build_path:)
+    previous = [Andromeda.config.mode, Andromeda.config.build_path]
+    Andromeda.config.mode = :production
+    Andromeda.config.build_path = build_path
+    yield
+  ensure
+    Andromeda.config.mode, Andromeda.config.build_path = previous
+    BlogPost.reload!
   end
 
   def with_project_root

@@ -154,6 +154,18 @@ module Andromeda
         Andromeda::Pipeline.new.collection_index(self)
       end
 
+      # Every entry read and validated from its source file, whatever the
+      # mode. This is what `andromeda:build` converts: in production `all`
+      # reads the built index instead, which does not exist before the first
+      # build and carries no body after it, so a build that went through `all`
+      # would either fail or overwrite every page with empty HTML.
+      #
+      # @return [Array<Andromeda::Entry>]
+      # @raise [Andromeda::LoaderError] listing every file that failed.
+      def source_entries
+        load_entries_from_source
+      end
+
       # Drops the in-memory cache, forcing the next query to re-run the
       # Loader. Used by tests that change fixtures mid-example, and is the
       # hook the dev-mode "reconvert on stale mtime" check will call.
