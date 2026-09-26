@@ -49,7 +49,7 @@ module Andromeda
     #   `data`/`body`/`digest`/`file_path` all come straight from the
     #   source file, not from a previous build).
     # @return [Hash] the stored payload (Symbol-keyed: `id`, `collection`,
-    #   `data`, `html`, `headings`, `digest`, `file_path`).
+    #   `data`, `html`, `headings`, `body`, `digest`, `file_path`).
     # @raise [Andromeda::SyntaxError, Andromeda::ParserError,
     #   Andromeda::Renderer::MissingComponentError] on a bad file; callers
     #   that want every problem across a whole collection reported together
@@ -69,6 +69,10 @@ module Andromeda
         data: publish_data_images(entry),
         html: result.html,
         headings: result.headings,
+        # Kept so `Entry#body` works in production, where entries come from
+        # the index and the source file is never read. The index itself
+        # leaves it out (Store#index_summary), so listings stay small.
+        body: entry.body,
         digest: entry.digest,
         render_key: render_key,
         file_path: entry.file_path

@@ -316,6 +316,26 @@ class PipelineTest < Minitest::Test
     assert_includes @store.read_entry(:pipeline_test_blog, "hello-world")[:html], "<h1"
   end
 
+  # Production entries come from the index, which carries no body; the body is
+  # read back from the entry's built file instead, as `html` is.
+  def test_body_is_available_in_production_mode_from_the_built_entry
+    BlogPost.reload!
+    pipeline.build_collection(BlogPost)
+
+    in_production_mode(build_path: @dir) do
+      BlogPost.reload!
+      assert_includes BlogPost.find("hello-world").body, "# Hello World"
+    end
+  end
+
+  def test_the_index_leaves_bodies_out
+    BlogPost.reload!
+    pipeline.build_collection(BlogPost)
+
+    assert(@store.read_index(:pipeline_test_blog).none? { |summary| summary.key?(:body) })
+    assert_includes @store.read_entry(:pipeline_test_blog, "hello-world")[:body], "# Hello World"
+  end
+
   def test_build_all_with_only_clean_collections_writes_everything
     BlogPost.reload!
     results = Andromeda::Pipeline.build_all([BlogPost], store: @store)

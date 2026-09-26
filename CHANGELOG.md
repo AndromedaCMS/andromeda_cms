@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-09-27
+
+### Fixed
+
+- `Entry#body` returned `nil` in production. Entries there are read from the
+  built index, which leaves bodies out, so anything using the raw Markdown --
+  a reading-time estimate, a Markdown export -- failed with `NoMethodError`.
+  The build now stores each entry's body in its own file (not the index), and
+  `Entry#body` reads it from there when needed, the same way `html` works.
+  Existing builds pick this up on the next `andromeda:build`.
+
 ## [0.1.1] - 2026-09-27
 
 ### Fixed
@@ -38,5 +49,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.1.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.2
 [0.1.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.1
 [0.1.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.0

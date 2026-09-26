@@ -230,9 +230,6 @@ module Andromeda
     # @return [Hash] Symbol-keyed validated frontmatter (may also carry
     #   String keys for unrecognized frontmatter -- see Schema::Result).
     attr_reader :data
-    # @return [String] raw Markdown/MDX body, frontmatter stripped but with
-    #   original line numbers preserved (Andromeda::Frontmatter#parse).
-    attr_reader :body
     # @return [String] absolute path to the source file.
     attr_reader :file_path
     # @return [String] SHA-256 of the whole source file, for cache keys.
@@ -260,6 +257,20 @@ module Andromeda
     #   never been built.
     def html
       converted[:html]
+    end
+
+    # The raw Markdown/MDX body, frontmatter stripped but with original line
+    # numbers preserved (Andromeda::Frontmatter#parse). Entries loaded from
+    # source carry it already; in production they come from the index, which
+    # leaves bodies out, so it is read from the entry's built file the same
+    # way `html` is.
+    #
+    # @return [String, nil] nil only for a build made before bodies were
+    #   stored (andromeda_cms < 0.1.2); rebuilding fixes it.
+    # @raise [Andromeda::BuildMissing] in production, if this entry has
+    #   never been built.
+    def body
+      @body || converted[:body]
     end
 
     # @return [Array<Hash>] `{depth:, slug:, text:}` per heading, in
