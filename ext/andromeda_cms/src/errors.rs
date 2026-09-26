@@ -21,13 +21,19 @@ use std::any::Any;
 /// `path` is intentionally not set here: the native layer has no notion of
 /// "which file is this" — `Andromeda::Parser.parse` (Ruby) re-raises with
 /// `path:` attached once it knows it.
-pub fn syntax_error(ruby: &Ruby, source: &str, offset: usize, message: &str) -> Result<Error, Error> {
+pub fn syntax_error(
+    ruby: &Ruby,
+    source: &str,
+    offset: usize,
+    message: &str,
+) -> Result<Error, Error> {
     let index = LineIndex::from_source(source);
     let mut cursor = index.cursor();
     let (line, column) = cursor.offset_to_line_col(offset as u32);
 
     let class: ExceptionClass = ruby.eval("Andromeda::SyntaxError")?;
-    let exception = class.new_instance((message, kwargs!(ruby, "line" => line, "column" => column)))?;
+    let exception =
+        class.new_instance((message, kwargs!(ruby, "line" => line, "column" => column)))?;
     Ok(Error::from(exception))
 }
 

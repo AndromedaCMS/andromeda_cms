@@ -129,7 +129,8 @@ fn rb_native_parse(ruby: &Ruby, source: String, mdx: bool) -> Result<String, Err
     }
 
     let json = nodes::node_to_json(&arena, 0);
-    serde_json::to_string(&json).map_err(|e| Error::new(ruby.exception_runtime_error(), e.to_string()))
+    serde_json::to_string(&json)
+        .map_err(|e| Error::new(ruby.exception_runtime_error(), e.to_string()))
 }
 
 #[magnus::init]

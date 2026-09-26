@@ -193,7 +193,9 @@ fn type_fields(arena: &Arena<Mdast>, id: u32, nt: MdastNodeType) -> Value {
                 json!({})
             }
         }
-        MdastNodeType::LinkReference | MdastNodeType::ImageReference | MdastNodeType::FootnoteReference => {
+        MdastNodeType::LinkReference
+        | MdastNodeType::ImageReference
+        | MdastNodeType::FootnoteReference => {
             if !data.is_empty() {
                 let d = ReferenceData::from_bytes(data);
                 let kind = match d.reference_kind {
@@ -202,7 +204,10 @@ fn type_fields(arena: &Arena<Mdast>, id: u32, nt: MdastNodeType) -> Value {
                     _ => "full",
                 };
                 let mut fields = Map::new();
-                fields.insert("identifier".into(), Value::String(get_str(arena, d.identifier)));
+                fields.insert(
+                    "identifier".into(),
+                    Value::String(get_str(arena, d.identifier)),
+                );
                 fields.insert("label".into(), opt_str(arena, d.label));
                 // mdast spec: only link/imageReference carry referenceType,
                 // not footnoteReference.
@@ -265,7 +270,9 @@ fn type_fields(arena: &Arena<Mdast>, id: u32, nt: MdastNodeType) -> Value {
                 json!({})
             }
         }
-        MdastNodeType::ContainerDirective | MdastNodeType::LeafDirective | MdastNodeType::TextDirective => {
+        MdastNodeType::ContainerDirective
+        | MdastNodeType::LeafDirective
+        | MdastNodeType::TextDirective => {
             if data.len() >= 12 {
                 let name = decode_directive_name(data);
                 let attr_count = decode_directive_attr_count(data);
@@ -304,9 +311,11 @@ fn type_fields(arena: &Arena<Mdast>, id: u32, nt: MdastNodeType) -> Value {
                         continue;
                     }
                     let value = match kind {
-                        0 => Value::Null, // boolean prop
+                        0 => Value::Null,                               // boolean prop
                         1 => Value::String(get_str(arena, attr_value)), // literal
-                        _ => json!({ "type": "mdxJsxAttributeValueExpression", "value": get_str(arena, attr_value) }), // expression prop
+                        _ => {
+                            json!({ "type": "mdxJsxAttributeValueExpression", "value": get_str(arena, attr_value) })
+                        } // expression prop
                     };
                     attrs.push(json!({
                         "type": "mdxJsxAttribute",
@@ -347,9 +356,15 @@ pub fn first_node_deeper_than(arena: &Arena<Mdast>, root: u32, limit: usize) -> 
         if depth > limit {
             return Some(id);
         }
-        let parent = MdastNodeType::from_u8(arena.get_node(id).node_type).map_or(false, is_parent);
+        let parent = MdastNodeType::from_u8(arena.get_node(id).node_type).is_some_and(is_parent);
         if parent {
-            pending.extend(arena.get_children(id).iter().rev().map(|&child| (child, depth + 1)));
+            pending.extend(
+                arena
+                    .get_children(id)
+                    .iter()
+                    .rev()
+                    .map(|&child| (child, depth + 1)),
+            );
         }
     }
     None

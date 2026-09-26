@@ -129,8 +129,9 @@ class ComponentsTest < Minitest::Test
   def test_array_and_object_literal_props
     out = render_mdx('<Widget items={["a", "b"]} meta={{a: 1, done: true}} />')
     assert_includes out, 'data-items="a,b"'
-    assert_includes out, "a&quot; =&gt; 1"
-    assert_includes out, "done&quot; =&gt; true"
+    # The partial interpolates the Hash, and Hash#inspect changed format in
+    # Ruby 3.4 ({"a"=>1} became {"a" => 1}), so expect whatever this Ruby prints.
+    assert_includes out, %(data-meta="#{ERB::Util.html_escape({ "a" => 1, "done" => true }.to_s)}")
   end
 
   def test_camel_case_prop_name_is_converted_to_snake_case
