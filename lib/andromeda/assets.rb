@@ -72,6 +72,28 @@ module Andromeda
       File.join("/assets", logical_path)
     end
 
+    # Whether the asset pipeline can serve `logical_path`. `url_for` falls
+    # back to a plain /assets path for anything it cannot find, so without
+    # this check a typo only shows up as a 404 in production.
+    #
+    # @return [Boolean, nil] nil when there is no Propshaft load path to ask
+    #   (no asset pipeline, or Sprockets), so callers can skip the check.
+    def exists?(logical_path)
+      load_path = pipeline_load_path
+      return nil if load_path.nil?
+
+      !load_path.find(logical_path).nil?
+    end
+
+    def pipeline_load_path
+      return nil unless defined?(::Rails) && ::Rails.respond_to?(:application) && ::Rails.application
+
+      assets = ::Rails.application.assets
+      assets.respond_to?(:load_path) && assets.load_path.respond_to?(:find) ? assets.load_path : nil
+    rescue StandardError
+      nil
+    end
+
     def logical_path(source, content_root:)
       source = File.expand_path(source)
       root = File.expand_path(content_root)

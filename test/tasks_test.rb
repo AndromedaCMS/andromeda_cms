@@ -75,6 +75,36 @@ class TasksTest < Minitest::Test
     end
   end
 
+  def test_check_reports_a_missing_asset_pipeline_image
+    with_extra_content("missing-asset.md", <<~MD) do
+      ---
+      title: Missing asset
+      pub_date: 2026-01-01
+      ---
+
+      ![](blog/posts/missing.png)
+    MD
+      problems = Andromeda::Check.run([Content::Post])
+
+      assert(problems.any? { |problem| problem.include?('"blog/posts/missing.png" is not in the asset pipeline') })
+    end
+  end
+
+  def test_check_reports_a_missing_relative_image
+    with_extra_content("missing-relative.md", <<~MD) do
+      ---
+      title: Missing relative
+      pub_date: 2026-01-01
+      ---
+
+      ![](./nope.png)
+    MD
+      problems = Andromeda::Check.run([Content::Post])
+
+      assert(problems.any? { |problem| problem.include?('"./nope.png" does not exist') })
+    end
+  end
+
   def test_fix_rewrites_keys_and_leaves_the_rest_byte_identical
     source = <<~MD
       ---

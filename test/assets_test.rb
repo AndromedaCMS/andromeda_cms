@@ -91,6 +91,20 @@ class AssetsTest < Minitest::Test
     assert_equal "andromeda-asset:logo.png", resolver.call("logo.png", nil)
   end
 
+  def test_a_bare_path_the_asset_pipeline_cannot_find_fails
+    resolver = Andromeda::Pipeline.new.send(:image_resolver_for, Content::Post.find("with-image"))
+
+    error = assert_raises(Andromeda::Error) { resolver.call("blog/posts/missing.png", nil) }
+    assert_equal 'image "blog/posts/missing.png" is not in the asset pipeline', error.message
+  end
+
+  def test_a_bare_path_is_trusted_without_propshaft
+    resolver = Andromeda::Pipeline.new.send(:image_resolver_for, Content::Post.find("with-image"))
+    Andromeda::Assets.stub(:pipeline_load_path, nil) do
+      assert_equal "andromeda-asset:blog/posts/missing.png", resolver.call("blog/posts/missing.png", nil)
+    end
+  end
+
   def test_publishing_twice_does_not_recopy_an_unchanged_file
     source = Rails.root.join("app/content/blog/with-image/cover.png").to_s
     root = Rails.root.join("app/content/blog").to_s
