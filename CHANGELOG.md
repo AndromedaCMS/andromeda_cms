@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The reader for an `:array` attribute declared `of: :reference` now resolves
+  each element to its entry, the way a single `:reference` reader already
+  did: `post.tags` returns the tag entries, in frontmatter order, and raises
+  `Andromeda::EntryNotFound` for an id with no entry. It used to return the
+  `Andromeda::Reference` pointers, which are still in `post.data[:tags]`.
+
 ## [0.1.2] - 2026-09-27
 
 ### Fixed
