@@ -70,7 +70,11 @@ module Andromeda
           return
         end
 
-        append_to_file filename, "#{missing.join("\n")}\n"
+        # Without this, a file whose last line has no newline gets the first
+        # ignore line glued onto it, breaking both entries.
+        content = File.read(path)
+        separator = content.empty? || content.end_with?("\n") ? "" : "\n"
+        append_to_file filename, "#{separator}#{missing.join("\n")}\n"
       end
     end
   end

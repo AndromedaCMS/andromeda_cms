@@ -56,6 +56,16 @@ module Generators
       assert_file ".gitignore", /node_modules\//
     end
 
+    test "starts on a new line when the last line of .gitignore/.dockerignore has no newline" do
+      File.write(File.join(destination_root, ".gitignore"), "/public/sitemap.xml.gz")
+      File.write(File.join(destination_root, ".dockerignore"), ".git")
+
+      run_generator
+
+      assert_file ".gitignore", "/public/sitemap.xml.gz\n/.andromeda/\n/app/assets/builds/andromeda/\n"
+      assert_file ".dockerignore", ".git\n/.andromeda/\n/app/assets/builds/andromeda/\n"
+    end
+
     test "explains itself instead of inventing .gitignore/.dockerignore when they don't exist" do
       output = run_generator
 
