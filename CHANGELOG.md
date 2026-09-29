@@ -14,6 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did: `post.tags` returns the tag entries, in frontmatter order, and raises
   `Andromeda::EntryNotFound` for an id with no entry. It used to return the
   `Andromeda::Reference` pointers, which are still in `post.data[:tags]`.
+- `andromeda:build` and `andromeda:check` now fail on content that used to
+  pass and then broke when served. Run `andromeda:check` before upgrading a
+  deploy to see what needs fixing:
+  - a `:reference`, alone or in an array, whose id has no entry in the target
+    collection, or that names a collection nobody registered;
+  - an image in the body written as a bare path (`blog/posts/x.png`) that
+    Propshaft's load path cannot find. These used to fall back to a plain
+    `/assets/...` URL and 404 in production. Without Propshaft the path is
+    still used as written.
+- Declaring `:array` with `of: :reference` and no `collection:`, or with
+  `of: :enum` and no `values:`, now raises `ArgumentError` at definition time.
+
+### Fixed
+
+- An `:array` of `:reference` built its elements without the declared
+  `collection:`, so each `Andromeda::Reference` had a `nil` collection. The
+  first process worked; the next one to read `.andromeda/` failed with
+  `NoMethodError: undefined method 'to_sym' for nil`. `of: :enum` lost its
+  `values:` the same way and raised `NoMethodError` on any value.
+- An image in the body written as `./` or `../` with no file behind it was
+  treated as an asset pipeline path and rendered as a broken `/assets/./...`
+  URL. It now fails the build, as the documentation says, and so does a
+  relative path that leaves the project.
+- `andromeda:install` appended its ignore lines to the last line of a
+  `.gitignore` or `.dockerignore` that did not end with a newline, breaking
+  both that entry and `/.andromeda/`.
 
 ## [0.1.2] - 2026-09-27
 
@@ -59,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[Unreleased]: https://github.com/AndromedaCMS/andromeda_cms/compare/v0.1.2...HEAD
 [0.1.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.2
 [0.1.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.1
 [0.1.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.1.0
