@@ -79,6 +79,16 @@ class StoreTest < Minitest::Test
     assert_equal "cover.png", read_back[:data][:cover].relative_path
   end
 
+  def test_round_trip_preserves_an_array_of_references_built_by_the_schema
+    schema = Andromeda::Schema.new { |s| s.attribute :tags, :array, of: :reference, collection: :tags }
+    entry_payload = payload
+    entry_payload[:data] = schema.validate({ "tags" => ["exam-prep"] }).data
+    @store.write_entry(:blog, "hello-world", entry_payload)
+    read_back = @store.read_entry(:blog, "hello-world")
+
+    assert_equal [Andromeda::Reference.new(collection: :tags, id: "exam-prep")], read_back[:data][:tags]
+  end
+
   def test_read_entry_returns_nil_when_nothing_was_ever_written
     assert_nil @store.read_entry(:blog, "does-not-exist")
   end
