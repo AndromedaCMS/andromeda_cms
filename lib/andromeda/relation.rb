@@ -78,6 +78,14 @@ module Andromeda
       self.class.new(@records.first(count), entry_class: entry_class)
     end
 
+    # Skips the first `count` entries, so `offset(10).limit(10)` is the
+    # second page of ten.
+    #
+    # @return [Andromeda::Relation]
+    def offset(count)
+      self.class.new(@records.drop(count), entry_class: entry_class)
+    end
+
     # @return [Andromeda::Entry, Array<Andromeda::Entry>, nil]
     def first(count = nil)
       count ? @records.first(count) : @records.first

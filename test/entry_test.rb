@@ -143,6 +143,22 @@ class EntryTest < Minitest::Test
     assert_equal 2, QueryPost.order(:pub_date).limit(2).count
   end
 
+  def test_offset_skips_the_leading_entries
+    ids = QueryPost.order(:pub_date).offset(1).map(&:id)
+
+    assert_equal %w[second-post nested/deep-post], ids
+  end
+
+  def test_offset_then_limit_pages_through_the_entries
+    ids = QueryPost.order(:pub_date).offset(1).limit(1).map(&:id)
+
+    assert_equal %w[second-post], ids
+  end
+
+  def test_offset_on_the_class
+    assert_equal 2, QueryPost.offset(1).count
+  end
+
   def test_first_without_argument_returns_a_single_entry
     entry = QueryPost.order(:pub_date).first
 

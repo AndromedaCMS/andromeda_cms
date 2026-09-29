@@ -133,6 +133,10 @@ module Andromeda
         all.limit(count)
       end
 
+      def offset(count)
+        all.offset(count)
+      end
+
       def first(count = nil)
         all.first(count)
       end
