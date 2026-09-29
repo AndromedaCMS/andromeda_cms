@@ -36,9 +36,14 @@ module Andromeda
     #   the original contract this class was written against, so it defaults
     #   to `{}` and callers that don't pass it simply get `nil` back for
     #   every `frontmatter.x` reference instead of an error.
-    def initialize(tree:, path: nil, view: nil, frontmatter: {})
+    # @param content_root [String, nil] the collection's base directory, which
+    #   decides where an imported image is published (see
+    #   `Andromeda::Assets.publish`). Defaults to the content file's own
+    #   directory.
+    def initialize(tree:, path: nil, view: nil, frontmatter: {}, content_root: nil)
       @tree = tree
       @path = path
+      @content_root = content_root
       @frontmatter = frontmatter || {}
       @view = view || default_view
       @imports = ImportScanner.scan(tree)
@@ -197,10 +202,46 @@ module Andromeda
     end
 
     def evaluate_prop_expression(source, node)
+      name = source.to_s.strip
+      return imported_image(name, node) if image_import?(name)
+
       StaticExpression.evaluate(source, frontmatter: @frontmatter)
     rescue StaticExpression::UnsupportedExpressionError
       position = node_position(node)
       raise UnsupportedExpressionError.new(source, path: @path, line: position[:line], column: position[:column])
+    end
+
+    IMAGE_EXTENSIONS = %w[.png .jpg .jpeg .gif .webp .avif .svg].freeze
+    IDENTIFIER_RE = /\A[A-Za-z_$][\w$]*\z/.freeze
+
+    # `{photo}` where `photo` was bound by `import photo from './photo.png'`
+    # -- Astro's way of passing an image to a component.
+    def image_import?(name)
+      return false unless IDENTIFIER_RE.match?(name)
+
+      specifier = @imports[name]
+      !specifier.nil? && IMAGE_EXTENSIONS.include?(File.extname(specifier).downcase)
+    end
+
+    # Publishes the imported file the same way an `image` attribute is, so
+    # the partial receives an Andromeda::Image and `andromeda_image_url`
+    # works on it unchanged. Containment is checked before existence so a
+    # crafted path never learns whether something outside the project exists.
+    #
+    # @return [Andromeda::Image]
+    # @raise [InvalidImageImportError]
+    def imported_image(name, node)
+      specifier = @imports[name]
+      invalid = ->(reason) { InvalidImageImportError.new(name, specifier, reason, path: @path, line: node_position(node)[:line]) }
+      raise invalid.call("must be a relative path (./ or ../)") unless specifier.start_with?("./", "../") && @path
+
+      source = File.expand_path(specifier, File.dirname(File.expand_path(@path)))
+      content_root = @content_root || File.dirname(source)
+      raise invalid.call("resolves outside the project") unless Andromeda::Assets.logical_path(source, content_root: content_root)
+      raise invalid.call("does not exist") unless File.file?(source)
+
+      logical = Andromeda::Assets.publish(source, content_root: content_root)
+      Andromeda::Image.new(path: source, relative_path: specifier, asset: Andromeda::Assets.marker_for(logical))
     end
 
     # @return [Hash{Symbol => String}] `{content: ...}` plus one entry per
@@ -259,6 +300,14 @@ module Andromeda
         @view.render(partial: partial, locals: locals).html_safe
       rescue ActionView::MissingTemplate
         raise missing_partial_error(name, node, partial)
+      rescue ActionView::Template::Error => e
+        # A partial that queries entries (`Content::Post.find(slug)`) can
+        # raise Andromeda's own errors; ActionView wraps them, which would
+        # slip past the build's `rescue Andromeda::Error` and abort it with a
+        # stack trace instead of listing the problem with the others.
+        raise e.cause if e.cause.is_a?(Andromeda::Error)
+
+        raise
       ensure
         restore_view_annotation(annotate_before)
       end

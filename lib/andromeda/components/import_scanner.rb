@@ -29,9 +29,8 @@ module Andromeda
       # @param tree [Hash] an mdast root node.
       # @return [Hash{String => String}] the name a component tag would use
       #   in the document, mapped to the raw import path/specifier. An
-      #   `import cover from './cover.png'` (image imports, deferred) ends
-      #   up here too -- harmless, since it is only ever consulted when that name is
-      #   later used as a component tag, and image imports never are.
+      #   `import cover from './cover.png'` ends up here too, which is how
+      #   Components resolves `{cover}` passed as a prop to an image.
       def scan(tree)
         imports = {}
 

@@ -71,8 +71,27 @@ module Andromeda
         location = [path, line].compact.join(":")
         super(
           "#{location}: unsupported MDX expression `{#{source}}` -- only literals, " \
-          "`frontmatter.x` references, and comments are supported"
+          "`frontmatter.x` references, imported images, and comments are supported"
         )
+      end
+    end
+
+    # Raised when a prop passes an imported image (`import photo from
+    # './photo.png'` then `src={photo}`) that cannot be published: the file
+    # is missing, lies outside the project, or was not imported by a
+    # relative path. Raising at build time keeps a typo from shipping as a
+    # 404.
+    class InvalidImageImportError < Andromeda::Error
+      attr_reader :name, :specifier, :path, :line
+
+      def initialize(name, specifier, reason, path:, line:)
+        @name = name
+        @specifier = specifier
+        @path = path
+        @line = line
+
+        location = [path, line].compact.join(":")
+        super("#{location}: image `#{name}` imported from #{specifier.inspect} #{reason}")
       end
     end
 

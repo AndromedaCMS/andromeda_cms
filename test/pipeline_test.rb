@@ -20,7 +20,7 @@ class PipelineTest < Minitest::Test
 
     attr_reader :tree, :path, :frontmatter, :calls
 
-    def initialize(tree:, path: nil, view: nil, frontmatter: {})
+    def initialize(tree:, path: nil, view: nil, frontmatter: {}, content_root: nil)
       @tree = tree
       @path = path
       @view = view

@@ -170,7 +170,7 @@ module Andromeda
       # @return [Array<Andromeda::Entry>]
       # @raise [Andromeda::LoaderError] listing every file that failed.
       def source_entries
-        load_entries_from_source
+        Andromeda::BuildContext.source_entries(self) { load_entries_from_source }
       end
 
       # Drops the in-memory cache, forcing the next query to re-run the
@@ -186,8 +186,13 @@ module Andromeda
       # needs was validated and written to `_index.json` at build time, so
       # reading it back is both faster and immune to a content file that
       # changed on disk after the build. Development goes to the Loader so
-      # edits are visible without a build step.
+      # edits are visible without a build step. A build is the exception:
+      # the index is only rewritten once a collection finishes converting,
+      # so a component querying entries mid-build reads source instead
+      # (see Andromeda::BuildContext).
       def entries
+        return source_entries if Andromeda::BuildContext.building?
+
         @entries ||= production? ? entries_from_index : load_entries_from_source
       end
 
