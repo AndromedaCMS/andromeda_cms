@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- An image imported in MDX (`import photo from './photo.png'`) can be passed
+  to a component as a prop (`<Figure src={photo} />`). It is published like
+  an `image` attribute, and the partial receives an `Andromeda::Image`.
+- `rails g andromeda:component` writes a strict locals declaration that
+  includes `content: nil`, since `content` is passed even to a self-closing
+  tag.
+
+### Fixed
+
+- A component that queries entries (`Content::Post.find(slug)`) during
+  `andromeda:build` in production reads source files instead of the
+  previous build's `_index.json`, so an entry not converted yet is found.
+- `andromeda_image_url` called inside a component while converting returns
+  an asset marker instead of a URL without a digest, which 404'd in
+  production. `andromeda_content` leaves markers in place there too.
+- A component that renders another entry's HTML during `andromeda:build`
+  converts that entry on the spot when it has not been converted yet,
+  instead of raising `Andromeda::BuildMissing`. Entries whose components
+  render each other fail with a "circular conversion" error.
+- An `Andromeda::Error` raised inside a component partial (such as
+  `EntryNotFound` from `find`) is no longer wrapped in
+  `ActionView::Template::Error`, so the build lists it with the other
+  problems instead of aborting with a stack trace.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

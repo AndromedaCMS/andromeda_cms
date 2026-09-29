@@ -16,6 +16,7 @@ module Generators
       assert_file "app/views/content_components/_callout.html.erb" do |content|
         assert_match(/<%# MDX usage:/, content)
         assert_match(/<Callout type="\.\.\." title="\.\.\.">/, content)
+        assert_match(/<%# locals: \(type: nil, title: nil, content: nil\) %>/, content)
         assert_match(/<% if local_assigns\[:type\] %>.*<%= type %>/, content)
         assert_match(/<% if local_assigns\[:title\] %>.*<%= title %>/, content)
         assert_match(/<%= content %>/, content)
@@ -46,6 +47,7 @@ module Generators
 
       assert_file "app/views/content_components/_note.html.erb" do |content|
         assert_match(/<Note>/, content)
+        assert_match(/<%# locals: \(content: nil\) %>/, content)
         assert_match(/<%= content %>/, content)
         refute_match(/local_assigns/, content)
       end

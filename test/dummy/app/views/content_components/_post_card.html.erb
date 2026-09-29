@@ -1,0 +1,3 @@
+<%# locals: (slug:, content: nil) %>
+<% post = Content::Post.find(slug) %>
+<a class="post-card"><img src="<%= andromeda_image_url(post.hero_image) %>" alt=""><%= post.title %></a>

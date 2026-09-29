@@ -44,10 +44,18 @@ module Andromeda
       def partial_content
         <<~ERB
           #{usage_comment}
+          #{strict_locals}
           <div class="#{underscored_name.dasherize}">
           #{prop_lines.join("\n")}#{"\n" unless prop_lines.empty?}  <%= content %>
           </div>
         ERB
+      end
+
+      # Every prop is optional, and `content` is declared too: it is passed
+      # even to a self-closing tag (`<Callout />`), where it is empty.
+      def strict_locals
+        locals = props.map { |prop| "#{prop.underscore}: nil" } << "content: nil"
+        "<%# locals: (#{locals.join(', ')}) %>"
       end
 
       def prop_lines

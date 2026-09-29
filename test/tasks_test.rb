@@ -31,6 +31,66 @@ class TasksTest < Minitest::Test
     assert_match(/converted \d+ entries/, output)
   end
 
+  # A deploy builds in production mode from a clean checkout: a component
+  # querying another entry must find it from source (no index exists yet),
+  # and an image URL it renders must stay a marker, since the digest is only
+  # known after assets:precompile.
+  def test_production_build_lets_a_component_find_another_entry_and_its_image
+    with_mode(:production) do
+      with_extra_content("aaa-card.mdx", <<~MDX) do
+        ---
+        title: Card
+        pub_date: 2026-01-01
+        ---
+
+        <PostCard slug="with-hero" />
+      MDX
+        capture_io { run_task("andromeda:build") }
+
+        html = Andromeda::Store.new(build_path: @build_path).read_entry(:blog, "aaa-card")[:html]
+        assert_includes html, "Post with a hero image"
+        assert_includes html, %(src="#{Andromeda::Assets::MARKER}andromeda/blog/with-hero/hero.png")
+      end
+    end
+  end
+
+  def test_production_build_converts_an_entry_a_component_embeds_before_its_turn
+    with_mode(:production) do
+      with_extra_content("aaa-embed.mdx", entry_embedding("with-image")) do
+        capture_io { run_task("andromeda:build") }
+
+        html = Andromeda::Store.new(build_path: @build_path).read_entry(:blog, "aaa-embed")[:html]
+        assert_includes html, %(src="#{Andromeda::Assets::MARKER}andromeda/blog/with-image/cover.png")
+      end
+    end
+  end
+
+  def test_build_lists_an_unknown_entry_queried_by_a_component_with_the_other_problems
+    with_extra_content("aaa-card.mdx", <<~MDX) do
+      ---
+      title: Card
+      pub_date: 2026-01-01
+      ---
+
+      <PostCard slug="nope" />
+    MDX
+      error = assert_raises(Andromeda::BuildError) { Andromeda::Pipeline.build_all }
+
+      assert_includes error.message, "aaa-card.mdx"
+      assert_includes error.message, %(no :blog entry with id "nope")
+    end
+  end
+
+  def test_build_reports_entries_whose_components_embed_each_other
+    with_extra_content("aaa-loop-a.mdx", entry_embedding("aaa-loop-b")) do
+      with_extra_content("aaa-loop-b.mdx", entry_embedding("aaa-loop-a")) do
+        error = assert_raises(Andromeda::BuildError) { Andromeda::Pipeline.build_all }
+
+        assert_includes error.message, "circular conversion: blog/aaa-loop-a -> blog/aaa-loop-b -> blog/aaa-loop-a"
+      end
+    end
+  end
+
   def test_clobber_removes_the_build_directory
     run_task("andromeda:build")
     capture_io { run_task("andromeda:clobber") }
@@ -147,6 +207,27 @@ class TasksTest < Minitest::Test
 
   def content_path(name)
     Rails.root.join("app/content/blog", name).to_s
+  end
+
+  def entry_embedding(slug)
+    <<~MDX
+      ---
+      title: Embed #{slug}
+      pub_date: 2026-01-01
+      ---
+
+      <PostEmbed slug="#{slug}" />
+    MDX
+  end
+
+  def with_mode(mode)
+    previous = Andromeda.config.mode
+    Andromeda.config.mode = mode
+    Content::Post.reload!
+    yield
+  ensure
+    Andromeda.config.mode = previous
+    Content::Post.reload!
   end
 
   def with_extra_content(name, source)

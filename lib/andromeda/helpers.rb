@@ -8,19 +8,28 @@ module Andromeda
     # Outputs an entry's converted body. Marked html_safe because the build
     # produced this markup from content the application's own authors wrote,
     # the same trust model Astro applies to `.md`/`.mdx` (see 13_security).
+    # Inside a component rendered at conversion time the asset markers are
+    # left in place, for the same reason `andromeda_image_url` leaves them.
     #
     # @param entry [Andromeda::Entry]
     # @return [ActiveSupport::SafeBuffer]
     def andromeda_content(entry)
-      Andromeda::Assets.resolve(entry.html).html_safe # rubocop:disable Rails/OutputSafety
+      html = Andromeda::BuildContext.converting? ? entry.html : Andromeda::Assets.resolve(entry.html)
+      html.html_safe # rubocop:disable Rails/OutputSafety
     end
 
+    # Inside a component partial rendered at conversion time, this returns
+    # the asset marker instead of a URL: the digest does not exist until
+    # `assets:precompile` runs, after the build, and `andromeda_content`
+    # resolves the marker when the page is served.
+    #
     # @param image [Andromeda::Image, nil] an `image` attribute's value.
     # @return [String, nil] its URL, or nil when the attribute is unset.
     def andromeda_image_url(image)
       return nil if image.nil?
 
-      Andromeda::Assets.resolve(image.asset || image.relative_path)
+      source = image.asset || image.relative_path
+      Andromeda::BuildContext.converting? ? source : Andromeda::Assets.resolve(source)
     end
 
     # Renders a nested table of contents from `entry.headings`.

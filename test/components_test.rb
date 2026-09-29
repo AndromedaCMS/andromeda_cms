@@ -150,6 +150,56 @@ class ComponentsTest < Minitest::Test
     assert_includes error.message, "app/content/blog/x.mdx:3"
   end
 
+  # --- props: imported images ------------------------------------------------
+
+  def image_entry_path
+    Rails.root.join("app/content/blog/with-image/index.mdx").to_s
+  end
+
+  def render_figure(import, content_root: Content::Post.base_dir)
+    tree = Andromeda::Parser.parse("#{import}\n\n<Figure src={photo} />\n", mdx: true)
+    components = Andromeda::Components.new(tree: tree, path: image_entry_path, content_root: content_root)
+    Andromeda::Renderer.new(components: components).render(tree).html
+  end
+
+  def test_imported_image_prop_is_published_and_passed_as_an_image
+    out = render_figure("import photo from './cover.png'")
+
+    assert_match %r{<img src="/assets/andromeda/blog/with-image/cover[^"]*\.png"}, out
+    assert_path_exists Rails.root.join("app/assets/builds/andromeda/blog/with-image/cover.png")
+  end
+
+  def test_imported_image_prop_stays_a_marker_while_converting
+    out = Andromeda::BuildContext.converting("blog/test") { render_figure("import photo from './cover.png'") }
+
+    assert_includes out, %(src="#{Andromeda::Assets::MARKER}andromeda/blog/with-image/cover.png")
+  end
+
+  def test_imported_image_that_does_not_exist_raises
+    error = assert_raises(Andromeda::Components::InvalidImageImportError) do
+      render_figure("import photo from './nope.png'")
+    end
+
+    assert_includes error.message, %(image `photo` imported from "./nope.png" does not exist)
+    assert_equal 3, error.line
+  end
+
+  def test_imported_image_outside_the_project_raises
+    error = assert_raises(Andromeda::Components::InvalidImageImportError) do
+      render_figure("import photo from '../../../../../../../../../etc/x.png'")
+    end
+
+    assert_includes error.message, "resolves outside the project"
+  end
+
+  def test_imported_image_by_a_non_relative_path_raises
+    error = assert_raises(Andromeda::Components::InvalidImageImportError) do
+      render_figure("import photo from '~/assets/cover.png'")
+    end
+
+    assert_includes error.message, "must be a relative path"
+  end
+
   def test_missing_optional_prop_uses_partial_local_assigns_default
     out = render_mdx("<Badge />")
     assert_includes out, ">default</span>"

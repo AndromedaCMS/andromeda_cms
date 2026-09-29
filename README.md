@@ -168,7 +168,32 @@ import Callout from 'content_components/callout';
 
 Props arrive as locals (`camelCase` becomes `snake_case`), the tag's children
 arrive as `content`, and `<Fragment slot="header">` becomes a `header` local.
+`content` is passed even to a self-closing tag (`<Callout />`), so a partial
+using strict locals must declare it:
+
+```erb
+<%# locals: (type: "note", title: nil, content: nil) %>
+```
+
 `bin/rails generate andromeda:component Callout type title` writes the stub.
+
+A component can query other entries, e.g. a card linking to another post:
+
+```erb
+<%# app/views/content_components/_post_card.html.erb %>
+<%# locals: (slug:, content: nil) %>
+<% post = Content::Blog.find(slug) %>
+<a href="<%= blog_path(post.id) %>">
+  <img src="<%= andromeda_image_url(post.cover_image) %>" alt="">
+  <%= post.title %>
+</a>
+```
+
+During `andromeda:build` such queries read the source files, so an entry not
+converted yet is still found, and `andromeda_content(post)` converts it on
+the spot. Component HTML is rendered once at build time
+and stored, so `andromeda_image_url` emits a placeholder there that
+`andromeda_content` turns into the digest-stamped URL when the page is served.
 
 ### Images
 
@@ -190,6 +215,24 @@ already ships (`app/assets/images/logo.png`, written as `logo.png`) resolve
 through the pipeline too; anything under `public/` or on another host is left
 untouched. Declare a frontmatter image with `attribute :hero_image, :image`
 and render it with `andromeda_image_url`.
+
+To pass an image to a component, import it and use it as a prop, as in Astro:
+
+```mdx
+import photo from './photo.png';
+
+<Figure src={photo} caption="The view from the top" />
+```
+
+The partial receives the same `Andromeda::Image` an `image` attribute holds:
+
+```erb
+<%# locals: (src:, caption: nil, content: nil) %>
+<figure>
+  <img src="<%= andromeda_image_url(src) %>" class="w-full" alt="">
+  <figcaption><%= caption %></figcaption>
+</figure>
+```
 
 ## Development and deployment
 

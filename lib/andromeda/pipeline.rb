@@ -62,10 +62,12 @@ module Andromeda
     def convert(entry)
       mdx = Andromeda::Parser.mdx?(entry.file_path)
       tree = Andromeda::Parser.parse(entry.body, mdx: mdx, path: entry.file_path)
-      result = Andromeda::Renderer.new(
-        components: components_for(entry, tree),
-        image_resolver: image_resolver_for(entry)
-      ).render(tree)
+      result = Andromeda::BuildContext.converting("#{entry.collection}/#{entry.id}") do
+        Andromeda::Renderer.new(
+          components: components_for(entry, tree),
+          image_resolver: image_resolver_for(entry)
+        ).render(tree)
+      end
 
       payload = {
         id: entry.id,
@@ -105,7 +107,11 @@ module Andromeda
     def fetch(entry)
       stored = @store.read_entry(entry.collection, entry.id)
 
-      if production?
+      # During a build a component may ask for an entry that has not been
+      # converted yet (or only by the previous build), so it is converted
+      # the development way. Once done, the digest and render key match and
+      # a second request reuses it.
+      if production? && !Andromeda::BuildContext.building?
         return stored if stored
 
         raise Andromeda::BuildMissing.new(collection: entry.collection, id: entry.id, file_path: entry.file_path)
@@ -177,6 +183,42 @@ module Andromeda
     # @param entry_class [Class]
     # @return [BuildResult]
     def build_collection(entry_class)
+      Andromeda::BuildContext.building { build_collection_from_source(entry_class) }
+    end
+
+    # Converts every registered collection, reporting every problem found
+    # across all of them together instead of
+    # aborting at the first bad collection or the first bad file within one.
+    #
+    # @param entry_classes [Array<Class>] defaults to every collection
+    #   currently registered in Andromeda::Registry.
+    # @param store [Andromeda::Store] shared across every collection, so
+    #   tests (and a Rake task that wants a non-default build path) can
+    #   inject one instead of every collection reaching for
+    #   `Andromeda::Store.new`'s own `Andromeda.config.build_path` default.
+    # @return [Array<BuildResult>] one per collection, on success.
+    # @raise [Andromeda::BuildError] listing every problem found, across
+    #   every collection, if any entry failed to convert or references an
+    #   entry that does not exist.
+    def self.build_all(entry_classes = default_entry_classes, store: Andromeda::Store.new)
+      Andromeda::BuildContext.building do
+        results = entry_classes.map { |entry_class| new(store: store).build_collection(entry_class) }
+        errors = results.flat_map(&:errors)
+        loaded = entry_classes.zip(results).filter_map { |entry_class, result| [entry_class, result.entries] if result.entries }
+        errors.concat(Andromeda::References.problems(loaded.to_h))
+        raise Andromeda::BuildError, errors unless errors.empty?
+
+        results
+      end
+    end
+
+    def self.default_entry_classes
+      Andromeda::Registry.collection_names.map { |name| Andromeda::Registry[name] }
+    end
+
+    private
+
+    def build_collection_from_source(entry_class)
       entries =
         begin
           entry_class.source_entries
@@ -200,36 +242,6 @@ module Andromeda
       @store.replace_collection!(entry_class.collection_name, payloads)
       BuildResult.new(collection: entry_class.collection_name, converted: payloads.size, errors: errors, entries: entries)
     end
-
-    # Converts every registered collection, reporting every problem found
-    # across all of them together instead of
-    # aborting at the first bad collection or the first bad file within one.
-    #
-    # @param entry_classes [Array<Class>] defaults to every collection
-    #   currently registered in Andromeda::Registry.
-    # @param store [Andromeda::Store] shared across every collection, so
-    #   tests (and a Rake task that wants a non-default build path) can
-    #   inject one instead of every collection reaching for
-    #   `Andromeda::Store.new`'s own `Andromeda.config.build_path` default.
-    # @return [Array<BuildResult>] one per collection, on success.
-    # @raise [Andromeda::BuildError] listing every problem found, across
-    #   every collection, if any entry failed to convert or references an
-    #   entry that does not exist.
-    def self.build_all(entry_classes = default_entry_classes, store: Andromeda::Store.new)
-      results = entry_classes.map { |entry_class| new(store: store).build_collection(entry_class) }
-      errors = results.flat_map(&:errors)
-      loaded = entry_classes.zip(results).filter_map { |entry_class, result| [entry_class, result.entries] if result.entries }
-      errors.concat(Andromeda::References.problems(loaded.to_h))
-      raise Andromeda::BuildError, errors unless errors.empty?
-
-      results
-    end
-
-    def self.default_entry_classes
-      Andromeda::Registry.collection_names.map { |name| Andromeda::Registry[name] }
-    end
-
-    private
 
     # What the stored HTML depends on besides the entry's own source.
     # Component partials are rendered into the HTML at conversion time, so
@@ -318,7 +330,10 @@ module Andromeda
       return nil unless Andromeda::Parser.mdx?(entry.file_path)
       return nil unless defined?(Andromeda::Components)
 
-      Andromeda::Components.new(tree: tree, path: entry.file_path, view: nil, frontmatter: entry.data)
+      Andromeda::Components.new(
+        tree: tree, path: entry.file_path, view: nil, frontmatter: entry.data,
+        content_root: Andromeda::Registry[entry.collection]&.base_dir
+      )
     end
   end
 end

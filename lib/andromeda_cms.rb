@@ -3,6 +3,7 @@
 require_relative "andromeda/version"
 require_relative "andromeda/errors"
 require_relative "andromeda/configuration"
+require_relative "andromeda/build_context"
 require_relative "andromeda/assets"
 require_relative "andromeda/helpers"
 require_relative "andromeda/fix"
