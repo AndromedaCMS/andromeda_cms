@@ -58,7 +58,8 @@ module Andromeda
       # stored `Andromeda::Reference` to the actual target entry (lazily,
       # via the registry) rather than returning the pointer itself --
       # `post.data[:author]` still holds the raw Reference for callers that
-      # want it.
+      # want it. An `:array` of `:reference` resolves each element the same
+      # way, so `post.tags` returns the tag entries.
       #
       # @see Andromeda::Schema#attribute for the full parameter list.
       def attribute(name, type, **options)
@@ -67,6 +68,8 @@ module Andromeda
 
         if type == :reference
           define_method(attr_name) { resolve_reference(attr_name) }
+        elsif type == :array && options[:of] == :reference
+          define_method(attr_name) { resolve_references(attr_name) }
         else
           define_method(attr_name) { data[attr_name] }
         end
@@ -312,6 +315,13 @@ module Andromeda
       # deliberately not resolved (or even looked up) at load time, so
       # referencing an entry never forces every other collection to load.
       Andromeda.get_entry(reference.collection, reference.id)
+    end
+
+    # @param attr_name [Symbol] an `:array` attribute declared `of: :reference`.
+    # @return [Array<Andromeda::Entry>] in the order the frontmatter lists them.
+    # @raise [Andromeda::EntryNotFound] for the first id with no entry.
+    def resolve_references(attr_name)
+      Array(data[attr_name]).map { |reference| Andromeda.get_entry(reference.collection, reference.id) }
     end
   end
 end

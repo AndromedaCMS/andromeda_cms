@@ -15,18 +15,20 @@ module Andromeda
     # @return [Array<String>] human-readable problems; empty when content is healthy.
     def run(entry_classes = Andromeda::Pipeline.default_entry_classes)
       problems = []
+      loaded = {}
 
       entry_classes.each do |entry_class|
         entries = load_entries(entry_class, problems)
         next if entries.nil?
 
+        loaded[entry_class] = entries
         entries.each do |entry|
           problems.concat(frontmatter_style_problems(entry))
           problems.concat(conversion_problems(entry))
         end
       end
 
-      problems
+      problems.concat(Andromeda::References.problems(loaded))
     end
 
     def load_entries(entry_class, problems)

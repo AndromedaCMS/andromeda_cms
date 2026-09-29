@@ -22,7 +22,11 @@ module Andromeda
     #   components, syntax errors) -- collected rather than raised
     #   individually, so a build reports everything in one pass (same
     #   principle as Andromeda::LoaderError).
-    BuildResult = Struct.new(:collection, :converted, :errors, keyword_init: true) do
+    #
+    # `entries` holds what was read from source (nil when the collection
+    # failed to load), so `.build_all` can check references across
+    # collections without reading every file a second time.
+    BuildResult = Struct.new(:collection, :converted, :errors, :entries, keyword_init: true) do
       def success? = errors.empty?
     end
 
@@ -194,7 +198,7 @@ module Andromeda
       end
 
       @store.replace_collection!(entry_class.collection_name, payloads)
-      BuildResult.new(collection: entry_class.collection_name, converted: payloads.size, errors: errors)
+      BuildResult.new(collection: entry_class.collection_name, converted: payloads.size, errors: errors, entries: entries)
     end
 
     # Converts every registered collection, reporting every problem found
@@ -209,10 +213,13 @@ module Andromeda
     #   `Andromeda::Store.new`'s own `Andromeda.config.build_path` default.
     # @return [Array<BuildResult>] one per collection, on success.
     # @raise [Andromeda::BuildError] listing every problem found, across
-    #   every collection, if any entry failed to convert.
+    #   every collection, if any entry failed to convert or references an
+    #   entry that does not exist.
     def self.build_all(entry_classes = default_entry_classes, store: Andromeda::Store.new)
       results = entry_classes.map { |entry_class| new(store: store).build_collection(entry_class) }
       errors = results.flat_map(&:errors)
+      loaded = entry_classes.zip(results).filter_map { |entry_class, result| [entry_class, result.entries] if result.entries }
+      errors.concat(Andromeda::References.problems(loaded.to_h))
       raise Andromeda::BuildError, errors unless errors.empty?
 
       results
@@ -270,7 +277,7 @@ module Andromeda
       content_root = File.dirname(entry.file_path)
       base_dir = Andromeda::Registry[entry.collection]&.base_dir || content_root
 
-      lambda do |url, _node|
+      lambda do |url, node|
         # Absolute URLs point at something already being served -- a file in
         # `public/`, another host, or an inline data URI -- so they are left
         # exactly as the author wrote them.
@@ -282,10 +289,27 @@ module Andromeda
           next Andromeda::Assets.marker_for(logical) if logical
         end
 
-        # Not a file next to the content: treat it as a logical asset path so
+        # `./` and `../` can only mean "relative to this file", so falling
+        # back to the asset pipeline would just turn a typo into a silent 404.
+        # Containment is checked first so a crafted path never learns whether
+        # something outside the project exists.
+        start = (node && node[:position] || {})[:start] || {}
+        location = start[:line] ? "#{start[:line]}:#{start[:column]}: " : ""
+        if url.start_with?("./", "../")
+          inside = Andromeda::Assets.logical_path(source, content_root: base_dir)
+          reason = inside ? "does not exist" : "resolves outside the project"
+          raise Andromeda::Error, "#{location}image #{url.inspect} #{reason}"
+        end
+
+        # A bare path is not a file next to the content: treat it as a logical asset path so
         # images the application already ships (`app/assets/images/logo.png`,
         # written as `logo.png`) resolve through the asset pipeline and get
-        # their digest, instead of 404ing in production.
+        # their digest, instead of 404ing in production. Without Propshaft
+        # there is nothing to ask, so the path is trusted as written.
+        if Andromeda::Assets.exists?(url) == false
+          raise Andromeda::Error, "#{location}image #{url.inspect} is not in the asset pipeline"
+        end
+
         Andromeda::Assets.marker_for(url)
       end
     end

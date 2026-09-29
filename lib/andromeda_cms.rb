@@ -19,6 +19,7 @@ require_relative "andromeda/loader"
 require_relative "andromeda/entry"
 require_relative "andromeda/store"
 require_relative "andromeda/pipeline"
+require_relative "andromeda/references"
 
 module Andromeda
   # The native extension is built per Ruby minor version, so prefer the

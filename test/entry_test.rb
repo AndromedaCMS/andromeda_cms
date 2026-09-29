@@ -185,6 +185,7 @@ class EntryTest < Minitest::Test
     collection :ref_test_posts, base: File.expand_path("fixtures/entries/posts", __dir__)
     attribute :title, :string, required: true
     attribute :author, :reference, collection: :ref_test_authors
+    attribute :reviewers, :array, of: :reference, collection: :ref_test_authors, default: []
   end
 
   def test_reference_resolves_to_the_target_entry
@@ -207,6 +208,21 @@ class EntryTest < Minitest::Test
     error = assert_raises(Andromeda::EntryNotFound) { post.author }
 
     assert_equal :ref_test_authors, error.collection
+    assert_equal "ghost", error.id
+  end
+
+  def test_array_of_references_resolves_each_element_in_order
+    post = RefPost.find("with-author")
+
+    assert_equal ["John Roe", "Jane Doe"], post.reviewers.map(&:name)
+    assert_equal %w[john jane], post.data[:reviewers].map(&:id), "data keeps the raw References"
+  end
+
+  def test_array_of_references_raises_entry_not_found_for_a_missing_element
+    post = RefPost.find("missing-author")
+
+    error = assert_raises(Andromeda::EntryNotFound) { post.reviewers }
+
     assert_equal "ghost", error.id
   end
 

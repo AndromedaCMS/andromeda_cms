@@ -108,6 +108,12 @@ module Andromeda
       end
       raise ArgumentError, "#{name}: :enum requires values:" if type == :enum && (values.nil? || values.empty?)
       raise ArgumentError, "#{name}: :reference requires collection:" if type == :reference && collection.nil?
+      if type == :array && of == :reference && collection.nil?
+        raise ArgumentError, "#{name}: :array of :reference requires collection:"
+      end
+      if type == :array && of == :enum && (values.nil? || values.empty?)
+        raise ArgumentError, "#{name}: :array of :enum requires values:"
+      end
       if type == :array && of && !TYPES.include?(of)
         raise ArgumentError, "#{name}: unknown element type #{of.inspect} for of:"
       end
@@ -291,7 +297,9 @@ module Andromeda
       return [nil, "#{value.inspect} is not an array"] unless value.is_a?(Array)
       return [value, nil] unless attr.of
 
-      element_attr = Attribute.new(name: attr.name, type: attr.of)
+      # `values:` and `collection:` describe the elements, not the array, so
+      # they have to travel with the element type.
+      element_attr = Attribute.new(name: attr.name, type: attr.of, values: attr.values, collection: attr.collection)
       errors = []
       elements = value.each_with_index.map do |element, index|
         coerced, error = coerce(element_attr, element, entry_path: entry_path, content_root: content_root)

@@ -30,6 +30,14 @@ class SchemaTest < Minitest::Test
     assert_raises(ArgumentError) { Andromeda::Schema.new { |s| s.attribute :author, :reference } }
   end
 
+  def test_array_of_reference_without_collection_raises_at_definition_time
+    assert_raises(ArgumentError) { Andromeda::Schema.new { |s| s.attribute :tags, :array, of: :reference } }
+  end
+
+  def test_array_of_enum_without_values_raises_at_definition_time
+    assert_raises(ArgumentError) { Andromeda::Schema.new { |s| s.attribute :statuses, :array, of: :enum } }
+  end
+
   # --- string ------------------------------------------------------------
 
   def test_string_valid
@@ -240,6 +248,30 @@ class SchemaTest < Minitest::Test
 
     refute_predicate result, :valid?
     assert_includes result.problems.first.message, "[1]"
+  end
+
+  def test_array_of_reference_carries_the_collection_to_each_element
+    schema = Andromeda::Schema.new { |s| s.attribute :tags, :array, of: :reference, collection: :tags }
+    result = schema.validate({ "tags" => ["exam-prep", { "id" => "abroad" }] })
+
+    assert_predicate result, :valid?
+    assert_equal [:tags, :tags], result.data[:tags].map(&:collection)
+    assert_equal %w[exam-prep abroad], result.data[:tags].map(&:id)
+  end
+
+  def test_array_of_reference_rejects_an_element_from_another_collection
+    schema = Andromeda::Schema.new { |s| s.attribute :tags, :array, of: :reference, collection: :tags }
+    result = schema.validate({ "tags" => [{ "id" => "jane", "collection" => "authors" }] })
+
+    refute_predicate result, :valid?
+    assert_match(/does not match declared collection/, result.problems.first.message)
+  end
+
+  def test_array_of_enum_checks_each_element_against_values
+    schema = Andromeda::Schema.new { |s| s.attribute :statuses, :array, of: :enum, values: %w[draft published] }
+
+    assert_equal %w[draft published], schema.validate({ "statuses" => %w[draft published] }).data[:statuses]
+    refute_predicate schema.validate({ "statuses" => %w[draft archived] }), :valid?
   end
 
   def test_array_without_of_passes_elements_through
