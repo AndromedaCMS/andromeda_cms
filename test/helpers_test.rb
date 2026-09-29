@@ -78,6 +78,16 @@ class HelpersTest < Minitest::Test
     assert_equal "#{Andromeda::Assets::MARKER}andromeda/blog/with-hero/hero.png", url
   end
 
+  def test_image_tag_passes_the_marker_through_while_converting
+    entry = Content::Post.find("with-hero")
+
+    html = Andromeda::BuildContext.converting("blog/test") do
+      @view.image_tag(@view.andromeda_image_url(entry.hero_image), alt: "")
+    end
+
+    assert_includes html, %(src="#{Andromeda::Assets::MARKER}andromeda/blog/with-hero/hero.png")
+  end
+
   private
 
   def stub_entry(headings)

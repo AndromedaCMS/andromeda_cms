@@ -234,6 +234,9 @@ The partial receives the same `Andromeda::Image` an `image` attribute holds:
 </figure>
 ```
 
+`image_tag andromeda_image_url(src)` works as well: while converting, the
+asset helpers pass the placeholder through untouched.
+
 ## Development and deployment
 
 ```
