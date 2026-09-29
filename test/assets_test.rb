@@ -50,12 +50,12 @@ class AssetsTest < Minitest::Test
     assert_match %r{/assets/andromeda/blog/with-hero/hero[-.]}, Andromeda::Assets.resolve(entry.hero_image.asset)
   end
 
-  def test_a_path_escaping_the_content_root_is_not_published
-    html = Content::Post.find("with-image").html
+  def test_a_path_escaping_the_project_is_not_published
+    resolver = Andromeda::Pipeline.new.send(:image_resolver_for, Content::Post.find("with-image"))
 
-    assert_includes html, "../../../../etc/passwd", "the URL is left untouched"
-    refute_path_exists builds_dir.join("andromeda/blog/with-image/passwd")
-    refute Dir.glob(builds_dir.join("**/passwd")).any?, "nothing outside the content root may be published"
+    error = assert_raises(Andromeda::Error) { resolver.call("#{"../" * 30}etc/passwd", nil) }
+    assert_match(/resolves outside the project/, error.message)
+    refute Dir.glob(builds_dir.join("**/passwd")).any?, "nothing outside the project may be published"
   end
 
   # An application's own assets and anything in public/ must keep working:
@@ -74,6 +74,21 @@ class AssetsTest < Minitest::Test
 
     assert_equal "https://example.com/a.png", resolver.call("https://example.com/a.png", nil)
     assert_equal "/logo.png", resolver.call("/logo.png", nil)
+  end
+
+  def test_a_missing_relative_image_fails_instead_of_falling_back_to_the_pipeline
+    resolver = Andromeda::Pipeline.new.send(:image_resolver_for, Content::Post.find("with-image"))
+    node = { position: { start: { line: 3, column: 1 } } }
+
+    error = assert_raises(Andromeda::Error) { resolver.call("./nope.png", node) }
+    assert_equal '3:1: image "./nope.png" does not exist', error.message
+    assert_raises(Andromeda::Error) { resolver.call("../nope.png", nil) }
+  end
+
+  def test_a_bare_path_still_falls_back_to_the_asset_pipeline
+    resolver = Andromeda::Pipeline.new.send(:image_resolver_for, Content::Post.find("with-image"))
+
+    assert_equal "andromeda-asset:logo.png", resolver.call("logo.png", nil)
   end
 
   def test_publishing_twice_does_not_recopy_an_unchanged_file

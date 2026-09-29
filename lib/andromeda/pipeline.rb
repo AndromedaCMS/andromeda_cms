@@ -270,7 +270,7 @@ module Andromeda
       content_root = File.dirname(entry.file_path)
       base_dir = Andromeda::Registry[entry.collection]&.base_dir || content_root
 
-      lambda do |url, _node|
+      lambda do |url, node|
         # Absolute URLs point at something already being served -- a file in
         # `public/`, another host, or an inline data URI -- so they are left
         # exactly as the author wrote them.
@@ -282,7 +282,19 @@ module Andromeda
           next Andromeda::Assets.marker_for(logical) if logical
         end
 
-        # Not a file next to the content: treat it as a logical asset path so
+        # `./` and `../` can only mean "relative to this file", so falling
+        # back to the asset pipeline would just turn a typo into a silent 404.
+        # Containment is checked first so a crafted path never learns whether
+        # something outside the project exists.
+        if url.start_with?("./", "../")
+          start = (node && node[:position] || {})[:start] || {}
+          location = start[:line] ? "#{start[:line]}:#{start[:column]}: " : ""
+          inside = Andromeda::Assets.logical_path(source, content_root: base_dir)
+          reason = inside ? "does not exist" : "resolves outside the project"
+          raise Andromeda::Error, "#{location}image #{url.inspect} #{reason}"
+        end
+
+        # A bare path is not a file next to the content: treat it as a logical asset path so
         # images the application already ships (`app/assets/images/logo.png`,
         # written as `logo.png`) resolve through the asset pipeline and get
         # their digest, instead of 404ing in production.
