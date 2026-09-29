@@ -32,6 +32,23 @@ module Andromeda
       Andromeda::BuildContext.converting? ? source : Andromeda::Assets.resolve(source)
     end
 
+    # Lets `image_tag andromeda_image_url(src)` work at conversion time.
+    # The marker has no `//`, so Rails would take it for a logical path and
+    # Propshaft would fail to find it; passing it through leaves it for
+    # `andromeda_content` to resolve like any other marker. Every asset
+    # helper (`image_tag`, `image_path`, `asset_url`...) goes through here.
+    def asset_path(source, options = {})
+      return source if Andromeda::BuildContext.converting? && source.to_s.start_with?(Andromeda::Assets::MARKER)
+
+      super
+    end
+
+    # `image_tag` and `asset_url` call this alias, which Rails binds to its
+    # own `asset_path` and so would skip the override above.
+    def path_to_asset(source, options = {})
+      asset_path(source, options)
+    end
+
     # Renders a nested table of contents from `entry.headings`.
     #
     # `min`/`max` default to h2..h3 because a page's h1 is usually the entry
