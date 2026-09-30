@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "pathname"
 
 module Andromeda
@@ -45,6 +46,7 @@ module Andromeda
         @base_dir = resolve_base(base)
         @pattern = pattern
         @entries = nil
+        @entries_signature = nil
         Andromeda::Registry.register(@collection_name, self)
         self
       end
@@ -174,10 +176,12 @@ module Andromeda
       end
 
       # Drops the in-memory cache, forcing the next query to re-run the
-      # Loader. Used by tests that change fixtures mid-example, and is the
-      # hook the dev-mode "reconvert on stale mtime" check will call.
+      # Loader. Used by tests that change fixtures mid-example and by
+      # Andromeda::Check; development queries notice source changes on their
+      # own (see `entries`).
       def reload!
         @entries = nil
+        @entries_signature = nil
       end
 
       private
@@ -190,10 +194,33 @@ module Andromeda
       # the index is only rewritten once a collection finishes converting,
       # so a component querying entries mid-build reads source instead
       # (see Andromeda::BuildContext).
+      #
+      # The development cache is dropped whenever the source files change
+      # (see `source_signature`), so a file added or edited while the server
+      # runs shows up on the next query without a restart.
       def entries
         return source_entries if Andromeda::BuildContext.building?
+        return @entries ||= entries_from_index if production?
 
-        @entries ||= production? ? entries_from_index : load_entries_from_source
+        signature = source_signature
+        if @entries.nil? || signature != @entries_signature
+          @entries = load_entries_from_source
+          @entries_signature = signature
+        end
+        @entries
+      end
+
+      # Paths, mtimes and sizes of the collection's source files: an added or
+      # removed file changes the path list, an edit changes mtime/size. Same
+      # scheme as Andromeda::Pipeline#render_key uses for component partials.
+      def source_signature
+        files = Dir.glob(pattern, base: base_dir).sort.filter_map do |relative|
+          file = File.join(base_dir, relative)
+          next unless File.file?(file)
+
+          [relative, File.mtime(file).to_r, File.size(file)].join(":")
+        end
+        Digest::SHA256.hexdigest(files.join("\n"))
       end
 
       def production?
