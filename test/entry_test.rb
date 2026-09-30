@@ -284,6 +284,48 @@ class EntryTest < Minitest::Test
     end
   end
 
+  def with_scratch_collection
+    Dir.mktmpdir("andromeda-entry-live") do |dir|
+      File.write(File.join(dir, "a.md"), "---\ntitle: A\n---\nbody\n")
+      klass = Class.new(Andromeda::Entry) do
+        attribute :title, :string, required: true
+      end
+      klass.collection :entry_test_live, base: dir
+      previous_mode = Andromeda.config.mode
+      Andromeda.configure { |config| config.mode = :development }
+      yield dir, klass
+    ensure
+      Andromeda.configure { |config| config.mode = previous_mode }
+    end
+  end
+
+  def test_development_entries_pick_up_an_added_file
+    with_scratch_collection do |dir, klass|
+      assert_equal 1, klass.count
+
+      File.write(File.join(dir, "b.md"), "---\ntitle: B\n---\nbody\n")
+
+      assert_equal 2, klass.count
+      assert_equal "B", klass.find("b").title
+    end
+  end
+
+  def test_development_entries_pick_up_an_edited_file
+    with_scratch_collection do |dir, klass|
+      assert_equal "A", klass.find("a").title
+
+      File.write(File.join(dir, "a.md"), "---\ntitle: Changed\n---\nbody\n")
+
+      assert_equal "Changed", klass.find("a").title
+    end
+  end
+
+  def test_development_entries_are_cached_while_sources_are_unchanged
+    with_scratch_collection do |_dir, klass|
+      assert_same klass.all.to_a.first, klass.all.to_a.first
+    end
+  end
+
   def test_html_converts_on_demand_in_development_and_includes_the_rendered_body
     with_scratch_build_path do
       entry = BuildPost.find("hello-world")
