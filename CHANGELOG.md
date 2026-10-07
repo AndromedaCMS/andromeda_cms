@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-07
+
+### Changed
+
+- `andromeda_content` now wraps the entry body in an `<andromeda-content>`
+  element, so the body can be targeted from CSS. Browsers treat an unknown
+  element as inline, so add `andromeda-content { display: block; }` to your
+  stylesheet. Markup that selected the body's direct children from the
+  parent element needs updating. Inside a component rendered during
+  `andromeda:build` the wrapper is left out, so an embedded entry is not
+  wrapped twice.
+
 ## [0.4.2] - 2026-09-30
 
 ### Fixed
@@ -141,6 +153,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.5.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.5.0
 [0.4.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.4.2
 [0.4.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.4.1
 [0.4.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.4.0
