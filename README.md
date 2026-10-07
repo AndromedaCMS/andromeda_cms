@@ -107,6 +107,10 @@ end
 </article>
 ```
 
+`andromeda_content` wraps the body in an `<andromeda-content>` element. Browsers
+treat it as inline by default, so add `andromeda-content { display: block; }`
+to your stylesheet.
+
 From there it is your code. A typical next step is to make fields mandatory,
 add a draft flag, and add a table of contents:
 
