@@ -15,6 +15,12 @@ class HelpersTest < Minitest::Test
     refute_includes html, Andromeda::Assets::MARKER
   end
 
+  def test_content_is_wrapped_in_andromeda_content_tag
+    html = @view.andromeda_content(Content::Post.find("with-image"))
+
+    assert_match %r{\A<andromeda-content>.*</andromeda-content>\z}m, html
+  end
+
   def test_toc_nests_by_heading_depth
     entry = stub_entry([
                          { depth: 2, slug: "one", text: "One" },

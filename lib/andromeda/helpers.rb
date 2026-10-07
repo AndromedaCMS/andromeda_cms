@@ -5,7 +5,11 @@ module Andromeda
   # thin presentation layer over data the build already produced: no parsing
   # or rendering happens while serving a request.
   module Helpers
-    # Outputs an entry's converted body. Marked html_safe because the build
+    # Outputs an entry's converted body, wrapped in `<andromeda-content>` so
+    # it can be targeted from CSS. Inside a component rendered at conversion
+    # time the wrapper is left out: the component's output is stored in the
+    # entry's html and wrapped once, when the page is served. Marked
+    # html_safe because the build
     # produced this markup from content the application's own authors wrote,
     # the same trust model Astro applies to `.md`/`.mdx` (see 13_security).
     # Inside a component rendered at conversion time the asset markers are
@@ -14,8 +18,9 @@ module Andromeda
     # @param entry [Andromeda::Entry]
     # @return [ActiveSupport::SafeBuffer]
     def andromeda_content(entry)
-      html = Andromeda::BuildContext.converting? ? entry.html : Andromeda::Assets.resolve(entry.html)
-      html.html_safe # rubocop:disable Rails/OutputSafety
+      return entry.html.html_safe if Andromeda::BuildContext.converting? # rubocop:disable Rails/OutputSafety
+
+      tag.send("andromeda-content", Andromeda::Assets.resolve(entry.html).html_safe) # rubocop:disable Rails/OutputSafety
     end
 
     # Inside a component partial rendered at conversion time, this returns
