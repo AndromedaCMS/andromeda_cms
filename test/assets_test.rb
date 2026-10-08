@@ -139,7 +139,59 @@ class AssetsTest < Minitest::Test
     end
   end
 
+  # Propshaft memoizes its file list on the first lookup, and that same load
+  # path later feeds assets:precompile. Asking about one asset must not hide
+  # files written afterwards (tailwind.css, published images).
+  def test_checking_an_asset_does_not_hide_files_written_afterwards
+    load_path = Rails.application.assets.load_path
+    added = track_builds_dir(load_path)
+    load_path.send(:clear_cache)
+    target = builds_dir.join("late-build.css")
+
+    assert Andromeda::Assets.exists?("logo.png")
+    FileUtils.mkdir_p(builds_dir)
+    File.write(target, "body {}")
+
+    assert_includes load_path.assets.map { |asset| asset.logical_path.to_s }, "late-build.css"
+  ensure
+    FileUtils.rm_f(target)
+    load_path.paths.delete(builds_dir) if added
+    load_path.send(:clear_cache)
+  end
+
+  def test_exists_rejects_absolute_and_parent_directory_paths
+    refute Andromeda::Assets.exists?("../x.png")
+    refute Andromeda::Assets.exists?("foo/../../x.png")
+    refute Andromeda::Assets.exists?("/logo.png")
+  end
+
+  def test_exists_sees_a_file_created_after_an_earlier_check
+    load_path = Rails.application.assets.load_path
+    added = track_builds_dir(load_path)
+    target = builds_dir.join("later.png")
+
+    assert Andromeda::Assets.exists?("logo.png")
+    refute Andromeda::Assets.exists?("later.png")
+    FileUtils.mkdir_p(builds_dir)
+    File.binwrite(target, "x")
+
+    assert Andromeda::Assets.exists?("later.png")
+  ensure
+    FileUtils.rm_f(target)
+    load_path.paths.delete(builds_dir) if added
+    load_path.send(:clear_cache)
+  end
+
   private
+
+  # The builds directory is only a Propshaft path when it existed at boot, and
+  # setup removes it. Returns whether it had to be added.
+  def track_builds_dir(load_path)
+    return false if load_path.paths.include?(builds_dir)
+
+    load_path.paths << builds_dir
+    true
+  end
 
   def builds_dir
     Rails.root.join("app/assets/builds")
