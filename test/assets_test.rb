@@ -159,6 +159,58 @@ class AssetsTest < Minitest::Test
     load_path.send(:clear_cache)
   end
 
+  # Partials rendered while building can call asset_path, which makes Propshaft
+  # memoize its file list; build_all has to discard that before returning.
+  def test_build_all_discards_the_cache_so_files_written_afterwards_are_seen
+    load_path = Rails.application.assets.load_path
+    added = track_builds_dir(load_path)
+    load_path.send(:clear_cache)
+    target = builds_dir.join("after-build.css")
+
+    assert load_path.find("logo.png")
+    FileUtils.mkdir_p(builds_dir)
+    File.write(target, "body {}")
+    Dir.mktmpdir do |dir|
+      Andromeda::Pipeline.build_all([], store: Andromeda::Store.new(build_path: dir))
+    end
+
+    assert_includes load_path.assets.map { |asset| asset.logical_path.to_s }, "after-build.css"
+  ensure
+    FileUtils.rm_f(target)
+    load_path.paths.delete(builds_dir) if added
+    load_path.send(:clear_cache)
+  end
+
+  def test_build_all_discards_the_cache_when_the_build_fails
+    load_path = Rails.application.assets.load_path
+    added = track_builds_dir(load_path)
+    load_path.send(:clear_cache)
+    target = builds_dir.join("after-failed-build.css")
+
+    assert load_path.find("logo.png")
+    FileUtils.mkdir_p(builds_dir)
+    File.write(target, "body {}")
+    Dir.mktmpdir do |dir|
+      Andromeda::References.stub(:problems, ["broken reference"]) do
+        assert_raises(Andromeda::BuildError) do
+          Andromeda::Pipeline.build_all([], store: Andromeda::Store.new(build_path: dir))
+        end
+      end
+    end
+
+    assert_includes load_path.assets.map { |asset| asset.logical_path.to_s }, "after-failed-build.css"
+  ensure
+    FileUtils.rm_f(target)
+    load_path.paths.delete(builds_dir) if added
+    load_path.send(:clear_cache)
+  end
+
+  def test_resetting_the_pipeline_cache_does_nothing_without_propshaft
+    Andromeda::Assets.stub(:pipeline_load_path, nil) do
+      assert_nil Andromeda::Assets.reset_pipeline_cache
+    end
+  end
+
   def test_exists_rejects_absolute_and_parent_directory_paths
     refute Andromeda::Assets.exists?("../x.png")
     refute Andromeda::Assets.exists?("foo/../../x.png")
