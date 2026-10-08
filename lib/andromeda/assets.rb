@@ -76,20 +76,30 @@ module Andromeda
     # back to a plain /assets path for anything it cannot find, so without
     # this check a typo only shows up as a 404 in production.
     #
+    # This looks at the files directly instead of calling `load_path.find`:
+    # Propshaft memoizes its file list on the first lookup, and the same load
+    # path is later used by assets:precompile. Asking it during andromeda:build
+    # would hide every file written afterwards (tailwind.css from
+    # tailwindcss:build, images copied by `publish`) from the precompile.
+    #
     # @return [Boolean, nil] nil when there is no Propshaft load path to ask
     #   (no asset pipeline, or Sprockets), so callers can skip the check.
     def exists?(logical_path)
       load_path = pipeline_load_path
       return nil if load_path.nil?
 
-      !load_path.find(logical_path).nil?
+      path = logical_path.to_s
+      return false if path.start_with?("/") || path.split("/").include?("..")
+      return false if File.basename(path).start_with?(".")
+
+      load_path.paths.any? { |directory| File.file?(File.join(directory.to_s, path)) }
     end
 
     def pipeline_load_path
       return nil unless defined?(::Rails) && ::Rails.respond_to?(:application) && ::Rails.application
 
       assets = ::Rails.application.assets
-      assets.respond_to?(:load_path) && assets.load_path.respond_to?(:find) ? assets.load_path : nil
+      assets.respond_to?(:load_path) && assets.load_path.respond_to?(:paths) ? assets.load_path : nil
     rescue StandardError
       nil
     end
