@@ -377,4 +377,34 @@ class EntryTest < Minitest::Test
       assert_equal %w[hello-world nested/deep-post second-post], index.map { |summary| summary[:id] }.sort
     end
   end
+
+  # --- replace_entries ------------------------------------------------------
+
+  def test_replace_entries_survives_queries_and_reload_restores
+    real = Content::Post.all.map(&:id)
+    fake = Content::Post.new(id: "fake", collection: :posts, data: { title: "Fake" }, body: "", file_path: "fake.md", digest: "x")
+
+    Content::Post.replace_entries([fake])
+
+    assert_equal ["fake"], Content::Post.all.map(&:id)
+    assert_equal ["fake"], Content::Post.all.map(&:id), "second query must not re-read files"
+
+    Content::Post.reload!
+
+    assert_equal real.sort, Content::Post.all.map(&:id).sort
+  ensure
+    Content::Post.reload!
+  end
+
+  def test_replace_entries_in_production_mode
+    previous_mode = Andromeda.config.mode
+    fake = Content::Post.new(id: "fake", collection: :posts, data: { title: "Fake" }, body: "", file_path: "fake.md", digest: "x")
+    Andromeda.configure { |config| config.mode = :production }
+    Content::Post.replace_entries([fake])
+
+    assert_equal ["fake"], Content::Post.all.map(&:id)
+  ensure
+    Andromeda.configure { |config| config.mode = previous_mode }
+    Content::Post.reload!
+  end
 end
