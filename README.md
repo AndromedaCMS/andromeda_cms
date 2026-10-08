@@ -307,14 +307,25 @@ bundle exec rake test:corpus  # after test/fetch_corpus.sh: parse ~370 real Astr
 ## Troubleshooting
 
 **`ArgumentError: wrong number of arguments (given 2, expected 1)` from `JSON.parse`.**
-Not this gem: Rails 8.1 calls `JSON.parse` with a positional options hash, which
-version 3 of the `json` gem no longer accepts, and decrypting a session cookie
-hits that path — so pages fail only once a session exists. Pin the `json` gem
-until Rails ships a fix:
+Not this gem's code: Rails 8.1 calls `JSON.parse` with a positional options hash,
+which version 3 of the `json` gem no longer accepts, and decrypting a session
+cookie hits that path, so pages fail only once a session exists. The gem
+restricts `json` to `< 3` to avoid this. If you are on an older andromeda_cms,
+pin it in your own `Gemfile` until Rails ships a fix:
 
 ```ruby
 # Gemfile
 gem "json", "~> 2.9"
+```
+
+## Testing
+
+To run model tests against entries that are not files under `app/content`,
+swap them in with `replace_entries` and restore the real ones with `reload!`:
+
+```ruby
+setup    { Content::Post.replace_entries([Content::Post.new(id: "a", collection: :posts, data: { title: "A" }, body: "", file_path: "a.md", digest: "x")]) }
+teardown { Content::Post.reload! }
 ```
 
 ## Contributing

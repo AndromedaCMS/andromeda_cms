@@ -184,6 +184,22 @@ module Andromeda
         @entries_signature = nil
       end
 
+      # Swaps the collection's entries for `list`, so tests can run against
+      # entries that are not backed by files under `app/content`. The cache
+      # signature is set to match the current source files, so the next query
+      # keeps `list` instead of noticing a mismatch and re-reading the files;
+      # setting `@entries` alone leaves the signature nil and the swap is
+      # silently undone. A later source file change, or `reload!`, restores
+      # the real entries.
+      #
+      # @param list [Array<Andromeda::Entry>]
+      # @return [Array<Andromeda::Entry>]
+      def replace_entries(list)
+        @entries = list.to_a.dup
+        @entries_signature = production? ? nil : source_signature
+        @entries
+      end
+
       private
 
       # Production never touches source files: everything a query
