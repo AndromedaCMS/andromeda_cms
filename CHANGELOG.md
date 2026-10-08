@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-10-09
+
+### Fixed
+
+- `assets:precompile` no longer leaves out `tailwind.css` when an
+  application partial rendered during `andromeda:build` calls `image_tag` or
+  `asset_path`. Propshaft caches its file list on the first lookup, so a
+  fresh build (an empty `app/assets/builds/`) shipped without the files
+  written afterwards and every page raised `Propshaft::MissingAssetError`.
+  `andromeda:build` now discards that cache when it finishes, whether or not
+  the build succeeds.
+
 ## [0.6.1] - 2026-10-09
 
 ### Fixed
@@ -177,6 +189,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.6.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.2
 [0.6.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.1
 [0.6.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.0
 [0.5.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.5.0
