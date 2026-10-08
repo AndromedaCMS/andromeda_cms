@@ -95,6 +95,21 @@ module Andromeda
       load_path.paths.any? { |directory| File.file?(File.join(directory.to_s, path)) }
     end
 
+    # Discards Propshaft's memoized file list. Propshaft builds it on the first
+    # lookup, and app partials rendered during `andromeda:build` can trigger
+    # that through `asset_path`. Files written afterwards (tailwind.css from
+    # tailwindcss:build, images copied by `publish`) would then be missing from
+    # assets:precompile, so the build calls this when it finishes. `clear_cache`
+    # is private API; if a Propshaft release renames it, skipping the reset is
+    # better than breaking the build.
+    def reset_pipeline_cache
+      load_path = pipeline_load_path
+      return if load_path.nil?
+
+      load_path.send(:clear_cache) if load_path.respond_to?(:clear_cache, true)
+      nil
+    end
+
     def pipeline_load_path
       return nil unless defined?(::Rails) && ::Rails.respond_to?(:application) && ::Rails.application
 

@@ -210,6 +210,8 @@ module Andromeda
 
         results
       end
+    ensure
+      Andromeda::Assets.reset_pipeline_cache
     end
 
     def self.default_entry_classes
