@@ -18,7 +18,19 @@ module Andromeda
       # already makes for MDX import statements. Anything shaped differently
       # falls through to `Attribute#unsupported?` rather than guessing.
       module ContentConfigConverter
-        Collection = Struct.new(:name, :base, :pattern, :attributes, keyword_init: true)
+        # `notes` are things about the collection itself (not one field)
+        # that still need a human -- e.g. a `pattern` this importer cannot
+        # carry over as written. Defaults to empty so existing
+        # `Collection.new` calls stay valid.
+        Collection = Struct.new(:name, :base, :pattern, :attributes, :notes, keyword_init: true) do
+          def initialize(notes: [], **rest) = super(notes: notes, **rest)
+        end
+
+        DEFAULT_PATTERN = "**/*.{md,mdx}"
+
+        # Bash-style extglob openers (`!(drafts)`, `@(a|b)`, ...), which
+        # Astro's glob loader accepts but Ruby's `Dir.glob` does not.
+        EXTGLOB_RE = /[!@+*?]\(/.freeze
 
         # One frontmatter field. `ruby_type` is nil when the Zod expression
         # could not be recognized at all -- `source` (the original
@@ -65,14 +77,62 @@ module Andromeda
         def build_collection(name, body, astro_root:)
           body = BalancedScanner.strip_comments(body)
           base = extract_string(body, /base\s*:/) || "./src/content/#{name}"
-          pattern = extract_string(body, /pattern\s*:/) || "**/*.{md,mdx}"
+          pattern, notes = extract_pattern(body)
 
           Collection.new(
             name: name,
             base: File.expand_path(base, astro_root),
             pattern: pattern,
-            attributes: extract_attributes(body)
+            attributes: extract_attributes(body),
+            notes: notes
           )
+        end
+
+        # Astro's `glob({ pattern: ... })` also takes an array (with `!`
+        # exclusions) and extglob syntax -- neither of which `Dir.glob`
+        # understands. Rather than silently dropping them, the closest
+        # usable pattern is kept and a note says what was lost.
+        #
+        # @return [Array(String, Array<String>)] the pattern and any notes.
+        def extract_pattern(body)
+          match = /pattern\s*:\s*\[/.match(body)
+          return extract_array_pattern(body, match.end(0) - 1) if match
+
+          pattern = extract_string(body, /pattern\s*:/) || DEFAULT_PATTERN
+          return [pattern, []] unless pattern.match?(EXTGLOB_RE)
+
+          [pattern, ["pattern `#{pattern}` uses extglob syntax, which Ruby's glob does not support -- " \
+                     "no files will match this pattern"]]
+        end
+
+        # Only what was actually lost gets a note: `!` exclusions (still
+        # copied and loaded) and any further non-exclusion patterns (copied
+        # but not loaded). A one-element or empty array loses nothing.
+        def extract_array_pattern(body, open_index)
+          close = BalancedScanner.matching_close(body, open_index)
+          # Squished onto one line: the note also becomes a `# TODO` comment.
+          source = body[open_index..close].gsub(/\s+/, " ")
+          elements = BalancedScanner.split_top_level(body[(open_index + 1)...close]).map do |literal|
+            literal.gsub(/\A(['"`])(.*)\1\z/, '\2')
+          end.reject(&:empty?)
+          exclusions, includes = elements.partition { |element| element.start_with?("!") }
+          pattern = includes.first || DEFAULT_PATTERN
+          dropped = includes.drop(1)
+
+          notes = []
+          unless exclusions.empty?
+            notes << "exclusions #{backticked(exclusions)} from pattern array #{source} are not applied, " \
+                     "so the files they exclude are still copied and loaded"
+          end
+          unless dropped.empty?
+            notes << "patterns #{backticked(dropped)} from pattern array #{source} were dropped " \
+                     "(only `#{pattern}` was kept), so files matching only them are copied but not loaded"
+          end
+          [pattern, notes]
+        end
+
+        def backticked(elements)
+          elements.map { |element| "`#{element}`" }.join(", ")
         end
 
         # @return [String, nil] the quoted value right after `label_re`, e.g.

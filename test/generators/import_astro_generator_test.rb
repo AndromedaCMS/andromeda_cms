@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "rails/generators/test_case"
+require "tmpdir"
 require "generators/andromeda/import_astro/import_astro_generator"
 
 module Generators
@@ -14,6 +15,25 @@ module Generators
 
     def run_import(extra_args = [])
       run_generator [FIXTURE_PROJECT, *extra_args]
+    end
+
+    # Runs the import against a throwaway Astro project whose
+    # `content.config.ts` declares `collections_source` (one `blog`
+    # collection with a single Markdown file).
+    def run_import_with_config(collections_source)
+      Dir.mktmpdir do |astro_root|
+        FileUtils.mkdir_p(File.join(astro_root, "src/content/blog"))
+        File.write(File.join(astro_root, "src/content/blog/post.md"), "---\ntitle: Post\n---\n")
+        File.write(File.join(astro_root, "src/content.config.ts"), <<~TS)
+          import { defineCollection } from 'astro:content';
+          import { glob } from 'astro/loaders';
+
+          #{collections_source}
+          export const collections = { blog };
+        TS
+
+        run_generator [astro_root]
+      end
     end
 
     test "copies content files, rewriting frontmatter keys to snake_case and leaving the body untouched" do
@@ -153,6 +173,76 @@ module Generators
       assert_no_file "app/models/content/blog.rb"
       assert_no_file "app/views/content_components/_callout.html.erb"
       assert_no_file "app/views/content_components/_badge.html.erb"
+    end
+
+    test "an array pattern keeps its first non-exclusion element and flags the dropped exclusions" do
+      output = run_import_with_config(<<~TS)
+        const blog = defineCollection({
+          loader: glob({
+            base: './src/content/blog',
+            pattern: ['!drafts/**', '**/*.md', '**/*.mdx'],
+          }),
+        });
+      TS
+
+      assert_match(/blog: exclusions `!drafts\/\*\*` from pattern array \[ ?'!drafts\/\*\*', '\*\*\/\*\.md', '\*\*\/\*\.mdx',? ?\] are not applied/, output)
+      assert_match(/blog: patterns `\*\*\/\*\.mdx` from pattern array .* were dropped \(only `\*\*\/\*\.md` was kept\)/, output)
+
+      assert_file "app/models/content/blog.rb" do |content|
+        assert_match(/^\s*# TODO: exclusions `!drafts.*-- fix `pattern` by hand\.\n\s*# TODO: patterns `\*\*\/\*\.mdx`.*\n\s*collection :blog/, content)
+        assert_match(%r{collection :blog, base: "app/content/blog", pattern: "\*\*/\*\.md"$}, content)
+      end
+    end
+
+    test "an array pattern without exclusions notes only the dropped patterns" do
+      output = run_import_with_config(<<~TS)
+        const blog = defineCollection({
+          loader: glob({ base: './src/content/blog', pattern: ['**/*.md', '**/*.mdx'] }),
+        });
+      TS
+
+      assert_match(/blog: patterns `\*\*\/\*\.mdx` from pattern array .* were dropped/, output)
+      assert_no_match(/exclusions/, output)
+      assert_file "app/models/content/blog.rb" do |content|
+        assert_match(%r{collection :blog, base: "app/content/blog", pattern: "\*\*/\*\.md"$}, content)
+      end
+    end
+
+    test "a one-element array pattern adds no note" do
+      output = run_import_with_config(<<~TS)
+        const blog = defineCollection({
+          loader: glob({ base: './src/content/blog', pattern: ['**/*.md'] }),
+        });
+      TS
+
+      assert_no_match(/Notes:/, output)
+      assert_file "app/models/content/blog.rb" do |content|
+        assert_no_match(/# TODO/, content)
+        assert_match(%r{collection :blog, base: "app/content/blog", pattern: "\*\*/\*\.md"$}, content)
+      end
+    end
+
+    test "an extglob pattern is flagged as matching nothing under Ruby's glob" do
+      output = run_import_with_config(<<~TS)
+        const blog = defineCollection({
+          loader: glob({ base: './src/content/blog', pattern: '!(drafts)/**/*.md' }),
+        });
+      TS
+
+      assert_match(/blog: pattern `!\(drafts\)\/\*\*\/\*\.md` uses extglob syntax/, output)
+    end
+
+    test "a plain string pattern adds no note" do
+      output = run_import_with_config(<<~TS)
+        const blog = defineCollection({
+          loader: glob({ base: './src/content/blog', pattern: '**/*.md' }),
+        });
+      TS
+
+      assert_no_match(/Notes:/, output)
+      assert_file "app/models/content/blog.rb" do |content|
+        assert_no_match(/# TODO/, content)
+      end
     end
 
     # Regression: a `//` comment directly above a field (as Astro's own
