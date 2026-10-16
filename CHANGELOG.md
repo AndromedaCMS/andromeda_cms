@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not loaded). An extglob pattern such as `!(drafts)/**/*.md`, which Ruby's
   glob cannot match, is flagged the same way instead of leaving the
   collection empty.
+- The gem now requires `tomlrb ~> 2.0`. tomlrb 3.0 removed
+  `Tomlrb::Scanner`, which TOML frontmatter parsing uses to report the line
+  of a syntax error, so on Ruby 3.3 and later a fresh install picked up 3.0
+  and every TOML frontmatter raised `NameError`.
 
 ## [0.6.2] - 2026-10-09
 
