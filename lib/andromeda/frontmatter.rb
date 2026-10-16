@@ -25,45 +25,53 @@ module Andromeda
     # a non-blank line is seen, no `---`/`+++` after it is a fence.
     LEADING_RE = /\A\uFEFF?(?:[ \t]*\r?\n)*/
 
-    # Psych resolves plain scalars by YAML 1.1 rules; js-yaml, which Astro
-    # uses, follows YAML 1.2's core schema. The two disagree on values that
-    # really do appear in hand-written frontmatter, and a silent disagreement
-    # is worse than an error: `time: 12:30` becoming the integer 45000 passes
-    # every schema check and then displays nonsense. Each rule below mirrors
-    # what js-yaml 4 does with the same plain scalar.
+    # Psych resolves plain scalars by YAML 1.1 rules; Astro 7.3.6 and later
+    # read frontmatter with the `yaml` package (core schema, `timestamp` tag,
+    # merge keys), which follows YAML 1.2's core schema. The two disagree on
+    # values that really do appear in hand-written frontmatter, and a silent
+    # disagreement is worse than an error: `time: 12:30` becoming the integer
+    # 45000 passes every schema check and then displays nonsense. Each rule
+    # below mirrors what that parser does with the same plain scalar.
     class ScalarScanner < Psych::ScalarScanner
       # 1.1-only booleans; 1.2 keeps them as strings.
       YAML_1_1_ONLY_BOOL = /\A(?:[Yy]es|YES|[Nn]o|NO|[Oo]n|ON|[Oo]ff|OFF|[Yy]|[Nn])\z/
       # 1.1 base-60 (`1:30`) and comma-grouped (`1,000`) numbers; 1.2 has
       # neither, so these stay strings.
       YAML_1_1_ONLY_NUMBER = /\A[-+]?[0-9][0-9_]*(?:(?::[0-5]?[0-9])+|(?:,[0-9_]+)+)(?:\.[0-9_]*)?\z/
-      # 1.1 reads a leading zero as octal (`010` is 8); 1.2 reads it as decimal.
-      LEADING_ZERO_DECIMAL = /\A[-+]?0[0-9_]+\z/
-      # 1.2's explicit octal prefix, unknown to Psych.
-      OCTAL = /\A[-+]?0o[0-7_]+\z/
-      # 1.2 accepts an exponent without a decimal point (`1e3`); Psych does not.
-      EXPONENT_FLOAT = /\A[-+]?(?:[0-9][0-9_]*(?:\.[0-9_]*)?|\.[0-9_]+)[eE][-+]?[0-9]+\z/
+      # The core schema's integers. A leading zero is plain decimal (`010` is
+      # 10, where 1.1 reads octal); `0o` octal and `0x` hex take no sign.
+      INTEGER = /\A[-+]?[0-9]+\z/
+      OCTAL = /\A0o[0-7]+\z/
+      HEX = /\A0x[0-9a-fA-F]+\z/
+      # The core schema's floats, including an exponent without a decimal
+      # point (`1e3`), which Psych rejects. `.inf`/`.nan` are left to Psych.
+      FLOAT = /\A[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?\z/
+      # Number-like spellings Psych accepts but the core schema does not
+      # (`1_000`, `0b1010`, `-0x1F`, `0o1_7`); they stay strings.
+      NON_CORE_NUMBER = /\A[-+]?(?:0[xXbBoO][0-9a-fA-F_]+|(?:[0-9][0-9_]*(?:\.[0-9_]*)?|\.[0-9_]+)(?:[eE][-+]?[0-9_]+)?)\z/
 
       def tokenize(string)
         case string
         when YAML_1_1_ONLY_BOOL, YAML_1_1_ONLY_NUMBER then string
-        when LEADING_ZERO_DECIMAL then Integer(string.delete("_"), 10)
-        when OCTAL then Integer(string.delete("_"))
-        when EXPONENT_FLOAT then Float(normalize_float(string.delete("_")))
+        when INTEGER then Integer(string, 10)
+        when OCTAL then Integer(string[2..], 8)
+        when HEX then Integer(string, 16)
+        when FLOAT then Float(normalize_float(string))
+        when NON_CORE_NUMBER then string
         else super
         end
       end
 
       private
 
-      # Ruby's Float() rejects the `1.e3` and `.5e3` spellings YAML allows.
+      # Ruby's Float() rejects the `1.`, `1.e3` and `.5e3` spellings YAML allows.
       def normalize_float(string)
-        string.sub(/\.(?=[eE])/, ".0").sub(/\A([-+]?)\./, "\\10.")
+        string.sub(/\.(?=[eE]|\z)/, ".0").sub(/\A([-+]?)\./, "\\10.")
       end
     end
 
-    # Restricts `!!` tags to Date/Time (matching js-yaml's default schema,
-    # which also has no notion of arbitrary Ruby classes) while still
+    # Restricts `!!` tags to Date/Time (matching the `yaml` package's core
+    # schema, which also has no notion of arbitrary Ruby classes) while still
     # permitting the two classes plain `YYYY-MM-DD`/timestamp scalars resolve
     # to, so unquoted dates round-trip instead of raising
     # Psych::DisallowedClass.
@@ -76,7 +84,7 @@ module Andromeda
     end
 
     # Plain (non-"safe") visitor so anchors/aliases resolve instead of
-    # raising -- js-yaml allows them by default, and copied Astro content may
+    # raising -- the `yaml` package resolves them by default, and copied Astro content may
     # rely on them.
     class ToRuby < Psych::Visitors::ToRuby
       def initialize
@@ -199,6 +207,8 @@ module Andromeda
       return {} if node.nil?
 
       reject_alias_explosion!(node, path: path, content_start_line: content_start_line)
+      reject_duplicate_keys!(node, ScalarScanner.new(ClassLoader.new), path: path,
+                                   content_start_line: content_start_line)
       ToRuby.new.accept(node) || {}
     rescue Psych::SyntaxError => e
       # Psych's own #line/#column are 0-based and relative to `text` (the
@@ -304,6 +314,36 @@ module Andromeda
       size
     end
     private_class_method :expanded_size
+
+    # Astro's `yaml` parser reports a repeated mapping key as an error, where
+    # Psych silently keeps the last value. Keys are compared after resolution,
+    # so `1` and `01` collide while `1` and `"1"` do not. Plain `<<` merge
+    # keys, alias keys and collection keys are left out.
+    def reject_duplicate_keys!(node, scanner, path:, content_start_line:)
+      if node.is_a?(Psych::Nodes::Mapping)
+        seen = {}
+        node.children.each_slice(2) do |key, _value|
+          next unless key.is_a?(Psych::Nodes::Scalar)
+          next if key.plain && key.value == "<<"
+
+          resolved = key.plain ? scanner.tokenize(key.value) : key.value
+          resolved = resolved.to_f if resolved.is_a?(Numeric)
+          if seen.key?(resolved)
+            raise syntax_error("duplicate key #{key.value.inspect}", path: path,
+                                                                    content_start_line: content_start_line,
+                                                                    relative_line: key.start_line,
+                                                                    relative_column: key.start_column)
+          end
+
+          seen[resolved] = true
+        end
+      end
+
+      node.children.to_a.each do |child|
+        reject_duplicate_keys!(child, scanner, path: path, content_start_line: content_start_line)
+      end
+    end
+    private_class_method :reject_duplicate_keys!
 
     def syntax_error(message, path:, content_start_line:, relative_line:, relative_column:)
       Andromeda::SyntaxError.new(
