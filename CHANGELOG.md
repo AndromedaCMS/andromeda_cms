@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-16
+
+### Changed
+
+- YAML frontmatter is now read the way Astro 7.3.6 and later read it. Astro
+  replaced js-yaml with the `yaml` package (core schema, timestamps, merge
+  keys), and Andromeda follows. Plain scalars that only YAML 1.1 or Psych
+  treat as numbers are now strings, as they are in Astro: values with
+  underscores (`1_000`, `0x1_F`), the `0b` prefix, and signed hexadecimal
+  or octal (`-0x1F`). Numbers in the core schema are unchanged, including
+  `010` (10), `0o17`, `0x1F` and `1e3`.
+- A mapping that repeats a key now raises `Andromeda::SyntaxError` at the
+  second key, with its line and column, as Astro does. It used to keep the
+  last value silently. Keys are compared after resolution, so `1` and `01`
+  collide while `1` and `"1"` do not; repeated `<<` merge keys are allowed.
+  Content that repeats a key will fail to build until the duplicate is
+  removed.
+
 ## [0.6.3] - 2026-10-16
 
 ### Fixed
@@ -208,6 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.7.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.0
 [0.6.3]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.3
 [0.6.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.2
 [0.6.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.1
