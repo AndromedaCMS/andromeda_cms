@@ -58,7 +58,7 @@ Gem::Specification.new do |spec|
   # Pure-Ruby TOML parser (no native extension to cross-compile) for `+++`
   # frontmatter blocks; see lib/andromeda/frontmatter.rb for why this gem was
   # chosen over toml-rb/tomlib.
-  spec.add_dependency "tomlrb", ">= 2.0"
+  spec.add_dependency "tomlrb", "~> 2.0"
   # Rails 8.1 calls JSON.parse with a positional options hash, which json 3
   # removed, so decrypting a session cookie raises ArgumentError. Drop this
   # bound once Rails ships a fix.

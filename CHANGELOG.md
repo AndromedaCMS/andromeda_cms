@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-10-16
+
+### Fixed
+
+- `andromeda:import_astro` no longer silently mishandles a `glob()` `pattern`
+  it cannot carry over. An array pattern is reduced to its first
+  non-exclusion element (it used to take the first string, even a `!`
+  exclusion), and a note in the report's "Needs a human" section plus a
+  `# TODO` above the generated `collection` line name what was lost:
+  exclusions that are not applied (those files are still copied and
+  loaded) and extra patterns that were dropped (those files are copied but
+  not loaded). An extglob pattern such as `!(drafts)/**/*.md`, which Ruby's
+  glob cannot match, is flagged the same way instead of leaving the
+  collection empty.
+- The gem now requires `tomlrb ~> 2.0`. tomlrb 3.0 removed
+  `Tomlrb::Scanner`, which TOML frontmatter parsing uses to report the line
+  of a syntax error, so on Ruby 3.3 and later a fresh install picked up 3.0
+  and every TOML frontmatter raised `NameError`.
+
 ## [0.6.2] - 2026-10-09
 
 ### Fixed
@@ -189,6 +208,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.6.3]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.3
 [0.6.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.2
 [0.6.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.1
 [0.6.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.0

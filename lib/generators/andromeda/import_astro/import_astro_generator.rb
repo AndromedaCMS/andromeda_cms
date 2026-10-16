@@ -80,7 +80,10 @@ module Andromeda
             fallback_collections
           end
 
-        @collections.each { |collection| refine_with_json_schema!(collection) }
+        @collections.each do |collection|
+          refine_with_json_schema!(collection)
+          collection.notes.each { |note| @report[:notes] << "#{collection.name}: #{note}" }
+        end
       end
 
       # The fallback clause: every top-level directory under
@@ -231,6 +234,9 @@ module Andromeda
         lines = ["# frozen_string_literal: true", ""]
         namespace_modules.each_with_index { |mod, i| lines << "#{"  " * i}module #{mod}" }
         lines << "#{indent}class #{collection.name.to_s.singularize.camelize} < Andromeda::Entry"
+        collection.notes.each do |note|
+          lines << "#{indent}  # TODO: #{note} (content.config.ts) -- fix `pattern` by hand."
+        end
         lines << "#{indent}  collection :#{collection.name}, base: \"app/content/#{collection.name}\", " \
                  "pattern: \"#{collection.pattern}\""
 
