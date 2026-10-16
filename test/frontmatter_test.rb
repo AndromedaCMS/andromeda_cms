@@ -377,7 +377,7 @@ class FrontmatterTest < Minitest::Test
     assert_equal %w[pubDate hero-image], Andromeda::Frontmatter.non_snake_case_keys(data)
   end
 
-  # --- YAML 1.2 scalars, as js-yaml resolves them ---------------------------------
+  # --- YAML 1.2 scalars, as Astro's `yaml` package resolves them ---------------------------------
 
   def yaml_value(scalar)
     data, = Andromeda::Frontmatter.parse("---\nvalue: #{scalar}\n---\nbody\n")
@@ -407,12 +407,89 @@ class FrontmatterTest < Minitest::Test
     assert_equal 500.0, yaml_value(".5e3")
   end
 
+  def test_underscores_and_binary_prefix_stay_strings
+    %w[1_000 1_000.5 0x1_F 0o1_7 01_0 0b1010 +0b1].each do |scalar|
+      assert_equal scalar, yaml_value(scalar), scalar
+    end
+  end
+
+  def test_signed_hex_and_octal_stay_strings
+    assert_equal "-0x1F", yaml_value("-0x1F")
+    assert_equal "-0o17", yaml_value("-0o17")
+    assert_equal "0X1F", yaml_value("0X1F")
+    assert_equal "0B1", yaml_value("0B1")
+  end
+
+  def test_core_schema_floats
+    assert_equal(-0.5, yaml_value("-.5"))
+    assert_in_delta 0.0, yaml_value("0."), 0
+    assert_equal Float::INFINITY, yaml_value("+.inf")
+    assert_predicate yaml_value(".NaN"), :nan?
+  end
+
   def test_scalars_both_versions_agree_on_are_unchanged
     assert_equal 31, yaml_value("0x1F")
-    assert_equal 1000, yaml_value("1_000")
+    assert_equal "yes", yaml_value("yes")
+    assert_equal "on", yaml_value("on")
     assert_equal 0.5, yaml_value(".5")
     assert_equal "1.2.3", yaml_value("1.2.3")
     assert_equal "010", yaml_value('"010"'), "quoted scalars are never resolved"
+  end
+
+  # --- duplicate keys ---------------------------------------------------------------
+
+  def duplicate_key_error(yaml)
+    assert_raises(Andromeda::SyntaxError) do
+      Andromeda::Frontmatter.parse("---\n#{yaml}\n---\nbody\n", path: "dup.md")
+    end
+  end
+
+  def test_duplicate_key_reports_the_second_keys_position
+    error = duplicate_key_error("title: x\na: 1\na: 2")
+
+    assert_equal "dup.md", error.path
+    assert_equal 4, error.line
+    assert_equal 1, error.column
+    assert_match(/duplicate key "a"/, error.message)
+  end
+
+  def test_duplicate_keys_that_resolve_to_the_same_key_are_errors
+    ["a: 1\na: 1", "a: 1\n\"a\": 2", "? a\na: 1", "null: 1\n~: 2",
+     "true: 1\nTrue: 2", "1: x\n01: y"].each do |yaml|
+      duplicate_key_error(yaml)
+    end
+  end
+
+  def test_duplicate_keys_in_nested_mappings_and_sequences_are_errors
+    error = duplicate_key_error("outer:\n  a: 1\n  a: 2")
+    assert_equal 4, error.line
+    assert_equal 3, error.column
+
+    error = duplicate_key_error("list:\n  - a: 1\n    a: 2")
+    assert_equal 4, error.line
+    assert_equal 5, error.column
+  end
+
+  def test_number_and_string_keys_are_distinct
+    data, = Andromeda::Frontmatter.parse("---\n1: x\n\"1\": y\n---\n")
+
+    assert_equal({ 1 => "x", "1" => "y" }, data)
+  end
+
+  def test_repeated_merge_keys_and_explicit_keys_after_a_merge_are_allowed
+    data, = Andromeda::Frontmatter.parse(<<~MD)
+      ---
+      a: &a { x: 1 }
+      b: &b { y: 2 }
+      post:
+        <<: *a
+        <<: *b
+        x: 9
+      ---
+      body
+    MD
+
+    assert_equal 9, data["post"]["x"]
   end
 
   # --- aliases ---------------------------------------------------------------------
