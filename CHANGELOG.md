@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-08
+
+### Changed
+
+- The gem no longer restricts `json` to `< 3`, so applications can use
+  json 3. The bound worked around Rails 8.1 failing to decrypt session
+  cookies under json 3, which no longer happens: with json 3.1.0 the test
+  suite passes on Rails 8.0.5.1 and 8.1.4.1, and session cookies are
+  written and read back correctly on Rails 8.1.4.1.
+
+### Removed
+
+- The README's Troubleshooting entry, which recommended pinning `json` to
+  2.x, is gone.
+
 ## [0.7.0] - 2026-10-16
 
 ### Changed
@@ -226,6 +241,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.7.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.1
 [0.7.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.0
 [0.6.3]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.3
 [0.6.2]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.2
