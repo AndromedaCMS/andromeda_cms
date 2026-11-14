@@ -37,6 +37,12 @@ module Andromeda
       class_option :dry_run, type: :boolean, default: false,
                               desc: "Print the migration report without writing any files"
 
+      # A collection name becomes `collection :name` and, singularized and
+      # camelized, the class name in the generated Ruby.
+      COLLECTION_NAME_RE = /\A[A-Za-z][A-Za-z0-9_]*\z/.freeze
+      CLASS_NAME_RE = /\A[A-Z][A-Za-z0-9_]*\z/.freeze
+      RESERVED_CLASS_NAMES = %w[BEGIN END].freeze
+
       def import
         # Thor's own options Hash is frozen by the time a command runs, so
         # `--dry-run` is translated into Thor's built-in `--pretend`
@@ -71,14 +77,29 @@ module Andromeda
 
       # @return [Array<ImportAstro::ContentConfigConverter::Collection>]
       def load_collections
-        @collections =
+        collections =
           if File.file?(config_path)
-            ImportAstro::ContentConfigConverter.parse(File.read(config_path), astro_root: astro_root)
+            source = File.read(config_path)
+            # Checked before anything is written, so a bad file stops the
+            # import cleanly instead of halfway through.
+            raise Thor::Error, "src/content.config.ts is not valid UTF-8" unless source.valid_encoding?
+
+            ImportAstro::ContentConfigConverter.parse(source, astro_root: astro_root)
           else
             @report[:notes] << "no src/content.config.ts found -- falling back to every directory under " \
                                 "src/content/ with no schema"
             fallback_collections
           end
+
+        # Whether it came from `const <name> = defineCollection(...)` or a
+        # directory under src/content/, a name that cannot become valid
+        # Ruby (`blog-posts`, `BEGIN`, `_`, or `x; system('…') #` in a
+        # malicious theme) is skipped rather than written into code.
+        @collections, invalid = collections.partition { |collection| valid_collection_name?(collection.name) }
+        invalid.each do |collection|
+          @report[:notes] << "#{one_line(collection.name)}: skipped -- a collection name must be letters, digits " \
+                             "and underscores, starting with a letter, and must make a valid class name"
+        end
 
         @collections.each do |collection|
           refine_with_json_schema!(collection)
@@ -118,12 +139,45 @@ module Andromeda
         end
       end
 
+      def valid_collection_name?(name)
+        return false unless name.match?(COLLECTION_NAME_RE)
+
+        class_name = name.to_s.singularize.camelize
+        class_name.match?(CLASS_NAME_RE) && !RESERVED_CLASS_NAMES.include?(class_name)
+      end
+
+      # Only files whose real path is inside the Astro project are copied.
+      # `glob({ base: '~/.ssh' })`, `base: '../..'`, or a symlink such as
+      # `src/assets/key -> ~/.ssh/id_rsa` in a malicious theme would
+      # otherwise copy files from elsewhere on the machine into the app.
+      def inside_astro_root?(path)
+        @real_astro_root ||= File.realpath(astro_root)
+        real = File.realpath(path)
+        real == @real_astro_root || real.start_with?("#{@real_astro_root}#{File::SEPARATOR}")
+      rescue SystemCallError
+        false
+      end
+
+      def report_outside(path)
+        @report[:notes] << "#{one_line(path)}: not copied -- it resolves to a location outside the Astro project"
+      end
+
       def copy_collections
         @collections.each do |collection|
           next unless Dir.exist?(collection.base)
 
+          unless inside_astro_root?(collection.base)
+            report_outside(collection.base)
+            next
+          end
+
           Dir.glob(File.join(collection.base, "**/*")).sort.each do |src|
             next unless File.file?(src)
+
+            unless inside_astro_root?(src)
+              report_outside(src.delete_prefix("#{astro_root}/"))
+              next
+            end
 
             relative = src.delete_prefix("#{collection.base}/")
             dest = "app/content/#{collection.name}/#{relative}"
@@ -144,6 +198,13 @@ module Andromeda
         end
 
         source = File.read(src)
+        unless source.valid_encoding?
+          create_file dest, File.binread(src)
+          @report[:copied] << dest
+          @report[:notes] << "#{one_line(dest)}: not valid UTF-8 -- copied unchanged, without frontmatter or import rewrites"
+          return
+        end
+
         fixed, renames = Andromeda::Fix.fix_source(source)
         renames.each { |from, to| @report[:frontmatter_renames] << "#{dest}: #{from} -> #{to}" }
 
@@ -172,8 +233,18 @@ module Andromeda
         assets_root = File.join(astro_root, "src/assets")
         return unless Dir.exist?(assets_root)
 
+        unless inside_astro_root?(assets_root)
+          report_outside("src/assets")
+          return
+        end
+
         Dir.glob(File.join(assets_root, "**/*")).sort.each do |src|
           next unless File.file?(src)
+
+          unless inside_astro_root?(src)
+            report_outside(src.delete_prefix("#{astro_root}/"))
+            next
+          end
 
           relative = src.delete_prefix("#{assets_root}/")
           dest = "app/assets/#{relative}"
@@ -198,17 +269,26 @@ module Andromeda
         return unless @component_usages
 
         @component_usages.each_value do |usage|
+          # A lowercase tag is plain HTML to the renderer, not a component.
+          next unless usage.name.match?(/\A[A-Z]/)
+
+          unless usage.name.match?(Andromeda::Generators::ComponentGenerator::VALID_NAME_RE)
+            @report[:notes] << "<#{one_line(usage.name)}>: no partial stub generated -- the name is not a valid " \
+                               "component name; add the partial by hand"
+            next
+          end
           next if partial_exists?(usage.name)
 
-          # Reuses the real `andromeda:component` generator (rather than
-          # duplicating its stub-content logic here) via Thor's own
-          # `invoke`, which shares this generator's `destination_root`
-          # automatically. `pretend:` is passed through explicitly --
-          # `invoke` only inherits a fresh invocation's *original* options
-          # (captured at construction time), not this instance's later
-          # `self.options = options.merge(pretend: true)` translation of
-          # `--dry-run` above.
-          invoke Andromeda::Generators::ComponentGenerator, [usage.name, *usage.props], pretend: options[:dry_run]
+          # Reuses the real `andromeda:component` generator rather than
+          # duplicating its stub-content logic here. It is instantiated
+          # directly for every component: Thor's `invoke` runs a given
+          # generator class only once per run, so every stub after the
+          # first was silently skipped. `pretend:` is passed explicitly so
+          # `--dry-run` reaches it too.
+          Andromeda::Generators::ComponentGenerator.new(
+            [usage.name, *usage.props], { pretend: options[:dry_run] },
+            destination_root: destination_root, shell: shell
+          ).invoke_all
           @report[:stubs] << component_partial_path(usage.name)
         end
       end
@@ -235,10 +315,10 @@ module Andromeda
         namespace_modules.each_with_index { |mod, i| lines << "#{"  " * i}module #{mod}" }
         lines << "#{indent}class #{collection.name.to_s.singularize.camelize} < Andromeda::Entry"
         collection.notes.each do |note|
-          lines << "#{indent}  # TODO: #{note} (content.config.ts) -- fix `pattern` by hand."
+          lines << "#{indent}  # TODO: #{one_line(note)} (content.config.ts) -- fix `pattern` by hand."
         end
         lines << "#{indent}  collection :#{collection.name}, base: \"app/content/#{collection.name}\", " \
-                 "pattern: \"#{collection.pattern}\""
+                 "pattern: #{collection.pattern.inspect}"
 
         unless collection.attributes.empty?
           lines << ""
@@ -258,17 +338,25 @@ module Andromeda
         return unsupported_attribute_lines(attr) if attr.unsupported?
 
         lines = []
-        lines << "# NOTE: #{attr.note}" if attr.note
-        lines << "attribute :#{snake_name(attr)}, :#{attr.ruby_type}#{attribute_modifiers(attr)}"
+        lines << "# NOTE: #{one_line(attr.note)}" if attr.note
+        lines << "attribute #{snake_name(attr).to_sym.inspect}, :#{attr.ruby_type}#{attribute_modifiers(attr)}"
         lines
       end
 
       def unsupported_attribute_lines(attr)
-        [
-          "# TODO: unsupported schema for `#{attr.name}` in content.config.ts (#{attr.source}) -- " \
-          "add the equivalent `attribute` by hand.",
-          "# attribute :#{snake_name(attr)}, :string"
-        ]
+        lines = []
+        lines << "# NOTE: #{one_line(attr.note)}" if attr.note
+        lines << "# TODO: unsupported schema for `#{one_line(attr.name)}` in content.config.ts " \
+                 "(#{one_line(attr.source)}) -- add the equivalent `attribute` by hand."
+        lines << "# attribute :#{one_line(snake_name(attr))}, :string"
+        lines
+      end
+
+      # Everything taken from the imported project that ends up in a
+      # generated `#` comment goes through here: a newline would end the
+      # comment and turn the rest of the text into Ruby code.
+      def one_line(text)
+        text.to_s.gsub(/\s+/, " ")
       end
 
       # The generated class's `attribute` calls must use the same
@@ -280,13 +368,16 @@ module Andromeda
         Andromeda::Fix.snake_case(attr.name)
       end
 
+      # Every value taken from the imported project is written with
+      # `inspect`, never interpolated as source text, so nothing in
+      # content.config.ts can turn into Ruby code in the generated class.
       def attribute_modifiers(attr)
         parts = []
         parts << "of: :#{attr.of}" if attr.ruby_type == :array && attr.of
         parts << "values: #{attr.values.inspect}" if attr.ruby_type == :enum
-        parts << "collection: :#{attr.collection}" if attr.ruby_type == :reference
-        parts << "required: true" if attr.required && attr.default.nil?
-        parts << "default: #{attr.default}" if attr.default
+        parts << "collection: #{attr.collection.inspect}" if attr.ruby_type == :reference
+        parts << "required: true" if attr.required && !attr.default?
+        parts << "default: #{attr.default.inspect}" if attr.default?
         parts.empty? ? "" : ", #{parts.join(", ")}"
       end
 
@@ -307,11 +398,18 @@ module Andromeda
         report_section "  Notes", @report[:notes], indent: "    "
       end
 
+      def printable(text)
+        text.to_s.gsub(/[[:cntrl:]]/) { |char| char.dump[1...-1] }
+      end
+
       def report_section(title, items, indent: "  ")
         return if items.empty?
 
         say "#{title}:"
-        items.each { |item| say "#{indent}#{item}" }
+        # Items carry file names and text from the imported project; a
+        # control character (an ANSI escape, say) is shown escaped rather
+        # than sent to the terminal.
+        items.each { |item| say "#{indent}#{printable(item)}" }
         say ""
       end
     end

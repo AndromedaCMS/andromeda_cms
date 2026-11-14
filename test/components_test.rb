@@ -59,6 +59,28 @@ class ComponentsTest < Minitest::Test
     assert_includes out, "CONVENTION-WINS"
   end
 
+  def test_import_path_outside_the_components_path_is_not_rendered
+    out = render_mdx(<<~MDX)
+      import PrecedenceWidget from 'layouts/outside_components'
+
+      <PrecedenceWidget />
+    MDX
+
+    assert_includes out, "CONVENTION-WINS"
+    refute_includes out, "OUTSIDE-COMPONENTS"
+  end
+
+  def test_import_path_escaping_the_components_path_with_dot_dot_is_not_rendered
+    out = render_mdx(<<~MDX)
+      import PrecedenceWidget from 'content_components/../layouts/outside_components'
+
+      <PrecedenceWidget />
+    MDX
+
+    assert_includes out, "CONVENTION-WINS"
+    refute_includes out, "OUTSIDE-COMPONENTS"
+  end
+
   def test_named_import_with_as_rename_resolves_by_the_local_name
     out = render_mdx(<<~MDX)
       import { PrecedenceWidget as Renamed } from 'content_components/precedence_import'

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "pathname"
+
 require_relative "components/errors"
 require_relative "components/import_scanner"
 require_relative "components/static_expression"
@@ -163,9 +165,19 @@ module Andromeda
       end
 
       import_path = @imports[name]
-      return import_path if import_path && partial_exists?(import_path)
+      return import_path if import_path && within_components_path?(import_path) && partial_exists?(import_path)
 
       convention_partial(name)
+    end
+
+    # An `import` is author-controlled text; without this it could make the
+    # renderer render any partial under app/views (a layout partial, an
+    # admin one). Imports resolve only inside the components directory, and
+    # anything else falls back to convention like an unresolvable import.
+    def within_components_path?(partial)
+      base = Andromeda.config.components_path.sub(%r{\Aapp/views/}, "")
+      normalized = Pathname.new(partial).cleanpath.to_s
+      normalized.start_with?("#{base}/")
     end
 
     def convention_partial(name)
