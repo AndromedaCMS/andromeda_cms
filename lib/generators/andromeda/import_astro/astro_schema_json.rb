@@ -66,7 +66,10 @@ module Andromeda
         def numeric_precision(schema_json, field_name)
           return nil unless schema_json.is_a?(Hash)
 
-          property = (schema_json["properties"] || {})[field_name]
+          properties = schema_json["properties"]
+          return nil unless properties.is_a?(Hash)
+
+          property = properties[field_name]
           return nil unless property.is_a?(Hash)
 
           case property["type"]

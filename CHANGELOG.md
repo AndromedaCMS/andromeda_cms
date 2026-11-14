@@ -5,6 +5,55 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-14
+
+### Changed
+
+- An MDX `import` now resolves only to a partial inside the components
+  directory (`Andromeda.config.components_path`). An import that points
+  anywhere else under `app/views`, such as a layout partial, is ignored and
+  the component falls back to its conventional partial, as an import that
+  does not resolve already did. Imported content could otherwise render
+  any partial in the application.
+- `rails g andromeda:import_astro` skips a collection whose name cannot
+  become a valid Ruby class, such as a `src/content/blog-posts` directory or
+  `const BEGIN = defineCollection(...)`, and lists it in the report. These
+  used to produce an entry class that failed to load.
+
+### Fixed
+
+- Security: `rails g andromeda:import_astro` no longer writes text from the
+  imported project into the generated entry classes as Ruby code. A
+  malicious Astro project could put code in a `.default(...)` value, a glob
+  `pattern`, a `reference(...)` name, a quoted field name or a schema
+  comment, and it ran every time the application loaded the class. Defaults
+  are now parsed into Ruby values, every imported value is written with
+  `inspect`, and text placed in comments is kept on one line. A default that
+  cannot be carried over is now noted in the class instead of silently
+  dropped.
+- Security: `rails g andromeda:import_astro` copies only files that are
+  inside the Astro project. A `glob({ base: ... })` pointing elsewhere (such
+  as `~/.ssh`) or a symlink to a file outside the project used to copy that
+  file into the application. A glob `pattern` that leaves the collection
+  directory is replaced with the default pattern.
+- `rails g andromeda:import_astro` generates a partial stub for every
+  component an MDX file uses, not only the first one, and none for
+  lowercase HTML tags.
+- `rails g andromeda:import_astro` no longer stops partway through on an
+  invalid component name, a content file that is not valid UTF-8, or a
+  malformed generated JSON Schema. A `content.config.ts` that is not valid
+  UTF-8 stops the import before anything is written.
+- `rails g andromeda:import_astro` no longer gives a collection the
+  schema of another collection whose name starts with the same text (`blog`
+  and `blogPosts`), and parses a config with many collections in linear
+  time.
+- Renaming frontmatter keys (`andromeda:fix` and the Astro import) no longer
+  corrupts a file whose frontmatter contains backslash sequences such as
+  `\0` or `\&`.
+- `rails g andromeda:component` turns a prop that is not a valid Ruby local
+  name (such as `class`, `a:b` or `content`) into a TODO comment instead of
+  writing a partial that fails to compile.
+
 ## [0.7.1] - 2026-11-08
 
 ### Changed
@@ -241,6 +290,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.8.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.8.0
 [0.7.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.1
 [0.7.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.0
 [0.6.3]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.6.3

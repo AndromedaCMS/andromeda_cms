@@ -51,7 +51,9 @@ module Andromeda
         line.sub(KEY_LINE) { "#{match[1]}#{match[2]}#{snake}#{match[2]}#{match[4]}" }
       end.join
 
-      [source.sub(frontmatter, fixed_frontmatter), renames]
+      # Block form: a replacement string would interpret `\0`, `\&` and `\\`
+      # sequences in the frontmatter's own values and corrupt the file.
+      [source.sub(frontmatter) { fixed_frontmatter }, renames]
     end
 
     def snake_case(key)

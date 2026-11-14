@@ -52,5 +52,31 @@ module Generators
         refute_match(/local_assigns/, content)
       end
     end
+
+    test "props that are not valid Ruby locals become TODO comments instead of broken ERB" do
+      run_generator ["Callout", "title", "a:b", "$x", "class", "begin", "content", "data-id"]
+
+      assert_file "app/views/content_components/_callout.html.erb" do |content|
+        assert_match(/<%# locals: \(title: nil, data_id: nil, content: nil\) %>/, content)
+        assert_match(/<%= title %>/, content)
+        assert_match(/<%= data_id %>/, content)
+        ["a:b", "$x", "class", "begin", "content"].each do |bad|
+          assert_includes content, "<%# TODO: prop `#{bad}` is not a valid local name -- rename it by hand. %>"
+        end
+        refute_match(/<%= (a:b|\$x|class|begin) %>/, content)
+        assert_includes content, '<Callout title="..." dataId="...">'
+      end
+    end
+
+    test "a rejected prop cannot close the ERB comment or break onto a new line" do
+      run_generator ["Callout", "x%> <%= system('id') %>\nfoo"]
+
+      assert_file "app/views/content_components/_callout.html.erb" do |content|
+        todo = content.lines.grep(/TODO/)
+        assert_equal 1, todo.size
+        assert_equal 1, todo.first.scan("%>").size
+        refute_includes content, "system('id') %>"
+      end
+    end
   end
 end

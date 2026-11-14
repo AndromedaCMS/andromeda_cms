@@ -190,6 +190,19 @@ class TasksTest < Minitest::Test
     end
   end
 
+  def test_fix_leaves_backslash_sequences_in_frontmatter_values_and_the_body_intact
+    value = 'a\\\\b \\0 \\& \\1'
+    # Single-quoted YAML keeps backslashes literal.
+    source = "---\ntitle: '#{value}'\npubDate: 2026-01-01\n---\n\nBody \\0 \\& stays.\n"
+
+    with_extra_content("backslash.md", source) do
+      Andromeda::Fix.run([Content::Post])
+      fixed = File.read(content_path("backslash.md"))
+
+      assert_equal source.sub("pubDate", "pub_date"), fixed
+    end
+  end
+
   private
 
   def load_tasks

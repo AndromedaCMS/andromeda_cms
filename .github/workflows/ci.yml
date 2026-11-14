@@ -23,6 +23,12 @@ jobs:
             rails: "8.1"
     env:
       RAILS_VERSION: ${{ matrix.rails }}
+      # Ruby 3.2 on ubuntu-26.04 is built with GCC 15, whose default is C23,
+      # so its configure leaves HAVE_STDBOOL_H undefined (C23's <stdbool.h>
+      # does not define `bool`). bindgen parses the headers as C17 and then
+      # has no `bool`. Including <stdbool.h> first defines it in either
+      # mode; macOS uses its own target-specific variable and is unaffected.
+      BINDGEN_EXTRA_CLANG_ARGS: -include stdbool.h
     steps:
       - uses: actions/checkout@v5
       - uses: oxidize-rb/actions/setup-ruby-and-rust@v1

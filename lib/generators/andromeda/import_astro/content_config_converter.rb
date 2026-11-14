@@ -28,6 +28,8 @@ module Andromeda
 
         DEFAULT_PATTERN = "**/*.{md,mdx}"
 
+        COLLECTION_RE = /const\s+(\w+)\s*=\s*defineCollection\s*\(/.freeze
+
         # Bash-style extglob openers (`!(drafts)`, `@(a|b)`, ...), which
         # Astro's glob loader accepts but Ruby's `Dir.glob` does not.
         EXTGLOB_RE = /[!@+*?]\(/.freeze
@@ -37,11 +39,16 @@ module Andromeda
         # expression text) is always kept so the generator can turn it into
         # a TODO comment naming exactly what needs a human (per the
         # generator's "never a silent omission" requirement).
+        #
+        # `default` is an already-parsed Ruby value (never source text), and
+        # `has_default` says whether there is one at all -- `default: false`
+        # and "no default" must not collapse into the same nil.
         Attribute = Struct.new(
-          :name, :ruby_type, :required, :default, :of, :values, :collection, :source, :note,
+          :name, :ruby_type, :required, :default, :has_default, :of, :values, :collection, :source, :note,
           keyword_init: true
         ) do
           def unsupported? = ruby_type.nil?
+          def default? = has_default ? true : false
         end
 
         # Astro's own base Zod types. Order matters: more specific
@@ -55,7 +62,25 @@ module Andromeda
           [/\Az\.date\(\)\z/, :date]
         ].freeze
 
-        DEFAULT_LITERAL_RE = /\A(?:true|false|-?\d+(?:\.\d+)?|'[^']*'|"[^"]*"|\[[^\]]*\])\z/.freeze
+        # Returned by `parse_literal` for anything it does not recognize, so
+        # that a literal `nil`/`false` default stays distinguishable.
+        UNPARSEABLE = Object.new.freeze
+
+        # The JS string escapes `parse_js_string` decodes. Any other
+        # backslash sequence makes the whole literal unparseable rather
+        # than risk decoding it differently from JS.
+        JS_STRING_ESCAPES = {
+          "\\" => "\\", "'" => "'", '"' => '"', "/" => "/", "$" => "$",
+          "n" => "\n", "t" => "\t", "r" => "\r", "b" => "\b", "f" => "\f", "v" => "\v"
+        }.freeze
+
+        # `\xHH`, `\uHHHH` and `\u{H...}`; `\0` only when no digit follows
+        # (`\01` is a legacy octal escape, which is not decoded).
+        JS_CODE_ESCAPE_RE = /\G(?:x(\h{2})|u(\h{4})|u\{(\h{1,6})\}|0(?!\d))/.freeze
+
+        # The field names the generator can declare: after
+        # `Andromeda::Fix.snake_case` these become plain Ruby symbols.
+        FIELD_NAME_RE = /\A[A-Za-z_][A-Za-z0-9_-]*\z/.freeze
 
         module_function
 
@@ -64,13 +89,17 @@ module Andromeda
         #   to resolve a `loader: glob({ base: ... })` path.
         # @return [Array<Collection>]
         def parse(source, astro_root:)
-          source.scan(/const\s+(\w+)\s*=\s*defineCollection\s*\(/).flatten.map do |const_name|
-            open = source.index("defineCollection", source.index("const #{const_name}"))
-            paren = source.index("(", open)
+          # Each match's own position is used: looking the name up again
+          # with `index("const #{name}")` would find `const blog` inside
+          # `const blogPosts`, and rescanning from the top for every
+          # collection made a large file quadratic.
+          source.to_enum(:scan, COLLECTION_RE).filter_map do
+            match = Regexp.last_match
+            paren = match.end(0) - 1
             close = BalancedScanner.matching_close(source, paren)
-            body = source[(paren + 1)...close]
+            next unless close
 
-            build_collection(const_name, body, astro_root: astro_root)
+            build_collection(match[1], source[(paren + 1)...close], astro_root: astro_root)
           end
         end
 
@@ -78,6 +107,15 @@ module Andromeda
           body = BalancedScanner.strip_comments(body)
           base = extract_string(body, /base\s*:/) || "./src/content/#{name}"
           pattern, notes = extract_pattern(body)
+
+          # The pattern ends up in the generated class and is globbed from
+          # `app/content/<name>/` at runtime, so one that climbs out of it
+          # (`../../config/*`, `/etc/*`, `~/...`) is not carried over.
+          if escapes_base?(pattern)
+            notes << "pattern `#{pattern}` reaches outside the collection directory -- " \
+                     "replaced with `#{DEFAULT_PATTERN}`"
+            pattern = DEFAULT_PATTERN
+          end
 
           Collection.new(
             name: name,
@@ -131,6 +169,10 @@ module Andromeda
           [pattern, notes]
         end
 
+        def escapes_base?(pattern)
+          pattern.start_with?("/", "~") || pattern.split(%r{[/\\]}).include?("..")
+        end
+
         def backticked(elements)
           elements.map { |element| "`#{element}`" }.join(", ")
         end
@@ -168,13 +210,30 @@ module Andromeda
         end
 
         def build_attribute(key, expr)
-          expr, required, default = strip_modifiers(expr)
+          # A quoted key can hold anything (`"a; system('…')": ...`); only a
+          # name that is a plain identifier is declared, anything else goes
+          # to the TODO list.
+          unless key.match?(FIELD_NAME_RE)
+            return Attribute.new(
+              name: key, ruby_type: nil, required: false, source: expr,
+              note: "field name `#{key}` is not a valid attribute name"
+            )
+          end
+
+          expr, required, default, has_default, dropped_default = strip_modifiers(expr)
           type, extra = classify(expr)
 
+          notes = [extra[:note]]
+          if dropped_default
+            notes << "default `#{dropped_default}` is not a plain literal and was not carried over -- " \
+                     "set `default:` by hand"
+          end
+
           Attribute.new(
-            name: key, ruby_type: type, required: type.nil? ? false : required, default: default,
+            name: key, ruby_type: type, required: type.nil? ? false : required,
+            default: default, has_default: has_default,
             of: extra[:of], values: extra[:values], collection: extra[:collection],
-            source: expr, note: extra[:note]
+            source: expr, note: notes.compact.join("; ").then { |note| note.empty? ? nil : note }
           )
         end
 
@@ -186,6 +245,8 @@ module Andromeda
         def strip_modifiers(expr)
           required = true
           default = nil
+          has_default = false
+          dropped_default = nil
 
           loop do
             if expr.end_with?(".optional()")
@@ -195,7 +256,8 @@ module Andromeda
               expr = inner.strip
               required = false
             elsif (inner = suffix_call_argument(expr, ".default"))
-              default = literal_default(inner)
+              has_default, default = literal_default(inner)
+              dropped_default = has_default ? nil : inner.strip
               expr = expr[0...-(".default(#{inner})".length)].strip
               required = false
             else
@@ -203,7 +265,7 @@ module Andromeda
             end
           end
 
-          [expr, required, default]
+          [expr, required, default, has_default, dropped_default]
         end
 
         # @return [String, nil] the argument text of a trailing `.method(...)`
@@ -231,13 +293,77 @@ module Andromeda
           expr[(prefix.length + 1)...close]
         end
 
-        # Only a recognizable Ruby-literal-compatible default is carried
-        # over verbatim (JS and Ruby agree on `true`/`false`/numbers/quoted
-        # strings/arrays-of-those); anything else is dropped and the field
-        # falls back to being flagged unsupported by `classify` seeing an
-        # expression it was not built to trust the shape of.
+        # Parses a `.default(...)` argument into a Ruby value: `true`/`false`,
+        # an integer, a float, a quoted string, or an array of those.
+        # Anything else is dropped. The text itself is never carried over --
+        # the generator writes the value back out with `inspect`, so a JS
+        # string like `"#{system('…')}"` can never become Ruby code.
+        #
+        # @return [Array(Boolean, Object)] whether a default was recognized,
+        #   and its value.
         def literal_default(text)
-          text.strip.match?(DEFAULT_LITERAL_RE) ? text.strip : nil
+          value = parse_literal(text.strip, allow_array: true)
+          value.equal?(UNPARSEABLE) ? [false, nil] : [true, value]
+        end
+
+        def parse_literal(text, allow_array:)
+          case text
+          when "true" then true
+          when "false" then false
+          # A leading zero is left out: JS reads `0123` as legacy octal (83).
+          when /\A-?(?:0|[1-9]\d*)\z/ then Integer(text, 10)
+          when /\A-?(?:0|[1-9]\d*)\.\d+\z/
+            # A literal too large for a Float becomes `Infinity`, which
+            # `inspect` writes as an undefined constant.
+            value = Float(text)
+            value.finite? ? value : UNPARSEABLE
+          when /\A(['"]).*\1\z/m then parse_js_string(text)
+          when /\A\[.*\]\z/m
+            return UNPARSEABLE unless allow_array
+
+            values = BalancedScanner.split_top_level(text[1...-1]).map do |element|
+              parse_literal(element, allow_array: false)
+            end
+            values.any? { |value| value.equal?(UNPARSEABLE) } ? UNPARSEABLE : values
+          else
+            UNPARSEABLE
+          end
+        end
+
+        # Decodes a single- or double-quoted JS string literal (including
+        # its quotes). Returns UNPARSEABLE for an unescaped closing quote or
+        # newline inside it, or an escape outside JS_STRING_ESCAPES.
+        def parse_js_string(text)
+          quote = text[0]
+          body = text[1...-1]
+          result = +""
+          i = 0
+
+          while i < body.length
+            char = body[i]
+            if char == "\\"
+              if (decoded = JS_STRING_ESCAPES[body[i + 1]])
+                result << decoded
+                i += 2
+              elsif (code = JS_CODE_ESCAPE_RE.match(body, i + 1))
+                codepoint = (code[1] || code[2] || code[3] || "0").to_i(16)
+                # A lone surrogate half (`\uD83D`) has no UTF-8 encoding.
+                return UNPARSEABLE if codepoint > 0x10FFFF || (0xD800..0xDFFF).cover?(codepoint)
+
+                result << codepoint.chr(Encoding::UTF_8)
+                i = code.end(0)
+              else
+                return UNPARSEABLE
+              end
+            elsif char == quote || char == "\n"
+              return UNPARSEABLE
+            else
+              result << char
+              i += 1
+            end
+          end
+
+          result
         end
 
         # @return [Array(Symbol, Hash), Array(nil, Hash)] the Ruby attribute
