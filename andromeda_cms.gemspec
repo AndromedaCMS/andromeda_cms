@@ -58,6 +58,6 @@ Gem::Specification.new do |spec|
   # Pure-Ruby TOML parser (no native extension to cross-compile) for `+++`
   # frontmatter blocks; see lib/andromeda/frontmatter.rb for why this gem was
   # chosen over toml-rb/tomlib.
-  spec.add_dependency "tomlrb", "~> 2.0"
+  spec.add_dependency "tomlrb", ">= 2.0", "< 4"
   spec.add_dependency "json"
 end

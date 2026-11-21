@@ -220,13 +220,25 @@ module Andromeda
     end
     private_class_method :parse_yaml
 
+    # tomlrb 3.x requires Ruby 3.3+, so Ruby 3.2 still resolves to 2.x. The
+    # two majors expose error positions differently (see parse_toml_v2 and
+    # parse_toml_v3); Tomlrb::Scanner only exists in 2.x.
     def parse_toml(text, path:, content_start_line:)
       return {} if text.strip.empty?
 
-      # Not calling the public Tomlrb.parse: it rescues Racc::ParseError
-      # itself and re-raises as Tomlrb::ParseError carrying only a message,
-      # which throws away the scanner's position along with it. Driving the
-      # scanner/parser directly keeps that position reachable below.
+      if defined?(Tomlrb::Scanner)
+        parse_toml_v2(text, path: path, content_start_line: content_start_line)
+      else
+        parse_toml_v3(text, path: path, content_start_line: content_start_line)
+      end
+    end
+    private_class_method :parse_toml
+
+    # tomlrb 2.x. Not calling the public Tomlrb.parse: it rescues
+    # Racc::ParseError itself and re-raises as Tomlrb::ParseError carrying
+    # only a message, which throws away the scanner's position along with it.
+    # Driving the scanner/parser directly keeps that position reachable below.
+    def parse_toml_v2(text, path:, content_start_line:)
       scanner = Tomlrb::Scanner.new(StringIO.new(text))
       parser = Tomlrb::Parser.new(scanner)
       normalize_toml_dates(parser.parse.output)
@@ -235,7 +247,31 @@ module Andromeda
       raise syntax_error(e.message, path: path, content_start_line: content_start_line,
                                      relative_line: relative_line, relative_column: relative_column)
     end
-    private_class_method :parse_toml
+    private_class_method :parse_toml_v2
+
+    # tomlrb 3.x appends the position to a syntax error's message, 1-based
+    # and counting the column in characters.
+    TOMLRB_POSITION = /\s+at line (\d+), column (\d+)\z/
+
+    # tomlrb 3.x. Its hand-written parser no longer uses Racc (so Racc may not
+    # be loaded at all) and reports the position only inside the message.
+    # Errors without one -- duplicate keys, invalid UTF-8, impossible dates
+    # (ArgumentError) -- point at the start of the frontmatter, as the 2.x
+    # path does when it can't find a position.
+    def parse_toml_v3(text, path:, content_start_line:)
+      normalize_toml_dates(Tomlrb.parse(text))
+    rescue Tomlrb::ParseError, ArgumentError => e
+      message = e.message
+      relative_line = relative_column = 0
+      if (match = TOMLRB_POSITION.match(message))
+        message = match.pre_match
+        relative_line = match[1].to_i - 1
+        relative_column = match[2].to_i - 1
+      end
+      raise syntax_error(message, path: path, content_start_line: content_start_line,
+                                   relative_line: relative_line, relative_column: relative_column)
+    end
+    private_class_method :parse_toml_v3
 
     # tomlrb represents TOML's date-only and offset-less-datetime types with
     # its own Tomlrb::LocalDate/LocalDateTime (only offset datetimes come
@@ -260,7 +296,7 @@ module Andromeda
     end
     private_class_method :normalize_toml_dates
 
-    # tomlrb's generated (Racc) parser tracks no token-start positions at
+    # tomlrb 2.x's generated (Racc) parser tracks no token-start positions at
     # all, only the underlying StringScanner's current byte offset -- which,
     # by the time the parser rejects a token, already sits *after* that
     # token. So the line this resolves to is exact (the offending token is
