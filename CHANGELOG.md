@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-11-21
+
+### Changed
+
+- Supports tomlrb 3.0. The `tomlrb` dependency is now `>= 2.0, < 4`
+  instead of the `~> 2.0` pin added in 0.6.3, so applications on Ruby 3.3
+  or later can move to tomlrb 3.0; Ruby 3.2 keeps resolving to 2.x, which
+  stays supported. Syntax errors in TOML (`+++`) frontmatter still report
+  the file, line and column. Under tomlrb 3.0, an error that tomlrb reports
+  without a position, such as a duplicate key, points at the start of the
+  frontmatter.
+
 ## [0.8.0] - 2026-11-14
 
 ### Changed
@@ -290,6 +302,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generators: `andromeda:install`, `andromeda:collection`,
   `andromeda:component` and `andromeda:import_astro`.
 
+[0.8.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.8.1
 [0.8.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.8.0
 [0.7.1]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.1
 [0.7.0]: https://github.com/AndromedaCMS/andromeda_cms/releases/tag/v0.7.0
